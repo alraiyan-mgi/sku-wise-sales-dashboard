@@ -1,0 +1,1936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SKU wise ND & Sales Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js\'><\/script>')"></script>
+<style>
+  :root{
+    --navy:#081B33;
+    --navy-2:#0F2A4A;
+    --blue-deep:#123A66;
+    --blue:#1E5A98;
+    --accent:#2E86DE;
+    --accent-soft:#5DA9E9;
+    --bg:#EFF4FA;
+    --panel:#FFFFFF;
+    --ink:#0E223B;
+    --muted:#5C7086;
+    --muted-2:#8A9CB0;
+    --border:#DCE6F0;
+    --border-soft:#EAF1F8;
+    --green:#1B8A5A;
+    --green-bg:#E8F7EF;
+    --red:#C7402D;
+    --red-bg:#FCEBE8;
+    --amber:#B9791A;
+    --amber-bg:#FBF1E1;
+    --radius-s:6px;
+    --radius-m:10px;
+    --radius-l:16px;
+    --shadow: 0 1px 2px rgba(10,30,60,.04), 0 6px 20px -8px rgba(10,30,60,.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1100px 420px at 8% -10%, rgba(46,134,222,.10), transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .num{font-family:'IBM Plex Mono', ui-monospace, monospace;}
+  a{color:inherit;}
+  ::selection{background:rgba(46,134,222,.22);}
+
+  /* ---------- Header ---------- */
+  header.top{
+    background:linear-gradient(120deg, var(--navy) 0%, var(--blue-deep) 62%, var(--blue) 100%);
+    color:#fff;
+    padding:26px 34px 24px;
+    position:relative;
+    overflow:hidden;
+  }
+  header.top::after{
+    content:"";
+    position:absolute; right:-60px; top:-90px;
+    width:340px; height:340px; border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, rgba(93,169,233,.35), transparent 70%);
+    pointer-events:none;
+  }
+  .top-row{
+    display:flex; align-items:flex-start; justify-content:space-between; gap:24px;
+    position:relative; z-index:1;
+    max-width:1480px; margin:0 auto;
+  }
+  .brand-mark{
+    display:flex; align-items:center; gap:14px;
+  }
+  .mark{
+    width:42px; height:42px; border-radius:11px;
+    background:linear-gradient(150deg, var(--accent-soft), var(--accent) 60%, #1a5fa3);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 4px 14px rgba(46,134,222,.45);
+    flex:none;
+  }
+  .mark svg{width:22px;height:22px;}
+  h1{
+    font-size:26px; font-weight:700; letter-spacing:.1px; margin:0;
+    line-height:1.15;
+  }
+  .subtitle{
+    color:rgba(255,255,255,.68); font-size:13.5px; margin-top:4px; font-weight:400;
+  }
+  .top-actions{display:flex; align-items:center; gap:10px;}
+  .meta-pill{
+    background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.16);
+    color:rgba(255,255,255,.85);
+    padding:8px 13px; border-radius:20px; font-size:12.5px;
+    display:flex; align-items:center; gap:7px;
+  }
+  .dot{width:6px;height:6px;border-radius:50%;background:#57D68D;flex:none;}
+  .dot.off{background:#EF8C6B;}
+
+  .spinner{
+    width:38px; height:38px; margin:0 auto 18px; border-radius:50%;
+    border:3.5px solid #DCEBFA; border-top-color:var(--accent);
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .btn.loading .ms{animation:spin .8s linear infinite;}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 16px; border-radius:9px; border:1px solid transparent;
+    font-size:13.5px; font-weight:600; cursor:pointer; font-family:inherit;
+    transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+    white-space:nowrap;
+  }
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{
+    background:linear-gradient(135deg, var(--accent-soft), var(--accent));
+    color:#fff; box-shadow:0 6px 16px -4px rgba(46,134,222,.55);
+  }
+  .btn-primary:hover{box-shadow:0 8px 20px -4px rgba(46,134,222,.7);}
+  .btn-ghost{
+    background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.22);
+  }
+  .btn-ghost:hover{background:rgba(255,255,255,.15);}
+  .btn-outline{
+    background:#fff; color:var(--blue); border:1px solid var(--border);
+  }
+  .btn-outline:hover{border-color:var(--accent); color:var(--accent);}
+
+  /* ---------- Layout shell ---------- */
+  .shell{max-width:1480px; margin:0 auto; padding:0 34px 60px;}
+
+  /* ---------- Empty state ---------- */
+  .empty-wrap{
+    margin-top:70px; display:flex; justify-content:center;
+  }
+  .dropzone{
+    width:100%; max-width:640px;
+    background:var(--panel); border:1.5px dashed var(--border);
+    border-radius:var(--radius-l); padding:52px 40px; text-align:center;
+    box-shadow:var(--shadow);
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .dropzone.drag{border-color:var(--accent); background:#F5FAFF;}
+  .dropzone .ic{
+    width:56px; height:56px; margin:0 auto 18px; border-radius:16px;
+    background:linear-gradient(135deg,#EAF3FC,#DCEBFA);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--accent);
+  }
+  .dropzone h3{margin:0 0 8px; font-size:17px;}
+  .dropzone p{margin:0 0 22px; color:var(--muted); font-size:13.5px; line-height:1.6;}
+  .dz-actions{display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}
+  .cols-hint{
+    margin-top:26px; padding-top:20px; border-top:1px solid var(--border-soft);
+    font-size:11.5px; color:var(--muted-2); line-height:1.9; text-align:left;
+  }
+  .cols-hint b{color:var(--muted);}
+
+  /* ---------- Filter bar ---------- */
+  .filterbar{
+    position:sticky; top:0; z-index:40;
+    background:rgba(239,244,250,.92); backdrop-filter:blur(10px);
+    padding:16px 0 12px;
+    margin-bottom:22px;
+  }
+  .filterbar-inner{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-m);
+    box-shadow:var(--shadow); padding:14px 16px;
+  }
+  .filter-row{display:flex; flex-wrap:wrap; gap:9px; align-items:center;}
+  .filter-row .spacer{flex:1;}
+  .fcount{
+    font-size:12px; color:var(--muted); white-space:nowrap; padding-right:6px;
+  }
+  .fcount b{color:var(--ink); font-family:'IBM Plex Mono',monospace;}
+
+  /* multiselect dropdown */
+  .msel{position:relative;}
+  .msel-btn{
+    display:flex; align-items:center; gap:7px;
+    background:#F6FAFE; border:1px solid var(--border); color:var(--ink);
+    padding:8px 11px; border-radius:8px; font-size:12.5px; font-weight:500;
+    cursor:pointer; user-select:none; white-space:nowrap;
+  }
+  .msel-btn:hover{border-color:var(--accent-soft);}
+  .msel-btn.active{border-color:var(--accent); background:#EAF3FC; color:var(--blue);}
+  .msel-btn .cnt{
+    background:var(--accent); color:#fff; font-size:10px; font-weight:700;
+    padding:1px 6px; border-radius:9px; line-height:1.5;
+  }
+  .msel-btn svg{width:11px;height:11px; opacity:.55;}
+  .msel-panel{
+    position:absolute; top:calc(100% + 6px); left:0; z-index:60;
+    background:#fff; border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 14px 34px -10px rgba(10,30,60,.28);
+    width:236px; max-height:300px; display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .msel-search{
+    padding:8px; border-bottom:1px solid var(--border-soft);
+  }
+  .msel-search input{
+    width:100%; border:1px solid var(--border); border-radius:6px; padding:6px 8px;
+    font-size:12px; font-family:inherit; outline:none;
+  }
+  .msel-search input:focus{border-color:var(--accent);}
+  .msel-list{overflow-y:auto; padding:6px; flex:1;}
+  .msel-opt{
+    display:flex; align-items:center; gap:8px; padding:6px 7px; border-radius:6px;
+    font-size:12.5px; cursor:pointer;
+  }
+  .msel-opt:hover{background:#F3F8FD;}
+  .msel-opt input{accent-color:var(--accent); width:13px; height:13px;}
+  .msel-foot{
+    display:flex; justify-content:space-between; padding:8px; border-top:1px solid var(--border-soft);
+  }
+  .msel-foot button{
+    background:none; border:none; color:var(--accent); font-size:11.5px; font-weight:600;
+    cursor:pointer; font-family:inherit; padding:2px 4px;
+  }
+  .msel-foot button:hover{text-decoration:underline;}
+
+  /* ---------- KPI strip ---------- */
+  .kpi-grid{
+    display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:26px;
+  }
+  .kpi{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-m);
+    padding:16px 18px; box-shadow:var(--shadow); position:relative; overflow:hidden;
+  }
+  .kpi::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:linear-gradient(180deg, var(--accent-soft), var(--blue));
+  }
+  .kpi .lbl{font-size:11.5px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.4px;}
+  .kpi .val{font-size:22px; font-weight:700; margin-top:8px; font-family:'IBM Plex Mono',monospace; color:var(--navy-2);}
+  .kpi .sub{font-size:11.5px; color:var(--muted-2); margin-top:5px;}
+
+  /* ---------- Tabs ---------- */
+  .tabs{
+    display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:22px;
+  }
+  .tab{
+    padding:11px 18px; font-size:13.5px; font-weight:600; color:var(--muted);
+    cursor:pointer; border-bottom:2.5px solid transparent; margin-bottom:-1px;
+    transition:color .12s ease, border-color .12s ease;
+    display:flex; align-items:center; gap:7px;
+  }
+  .tab:hover{color:var(--blue);}
+  .tab.active{color:var(--blue); border-color:var(--accent);}
+  .tab .n{
+    background:var(--border-soft); color:var(--muted); font-size:10.5px; font-weight:700;
+    padding:1px 7px; border-radius:9px;
+  }
+  .tab.active .n{background:var(--accent); color:#fff;}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-l);
+    box-shadow:var(--shadow); padding:22px 22px 10px; margin-bottom:20px;
+  }
+  .panel-head{
+    display:flex; align-items:flex-end; justify-content:space-between; gap:16px;
+    margin-bottom:16px; flex-wrap:wrap;
+  }
+  .panel-title{font-size:15.5px; font-weight:700; color:var(--ink);}
+  .panel-desc{font-size:12px; color:var(--muted); margin-top:3px;}
+
+  .grid-2{display:grid; grid-template-columns:1.3fr 1fr; gap:20px; align-items:start;}
+
+  canvas{max-width:100%;}
+
+  /* ---------- Table ---------- */
+  .tbl-wrap{overflow-x:auto; border:1px solid var(--border-soft); border-radius:10px;}
+  table{width:100%; border-collapse:collapse; font-size:12.8px;}
+  thead th{
+    text-align:left; padding:10px 12px; background:#F5FAFE; color:var(--blue);
+    font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.35px;
+    border-bottom:1px solid var(--border); white-space:nowrap; position:sticky; top:0;
+    cursor:pointer; user-select:none;
+  }
+  thead th:hover{color:var(--accent);}
+  thead th .arrow{opacity:.4; font-size:9px; margin-left:3px;}
+  thead th.active{color:var(--accent);}
+  thead th.active .arrow{opacity:1;}
+  tbody td{padding:9px 12px; border-bottom:1px solid var(--border-soft); white-space:nowrap; color:var(--ink);}
+  tbody tr:hover{background:#F8FBFE;}
+  tbody tr:last-child td{border-bottom:none;}
+  td.num, th.num{font-family:'IBM Plex Mono',monospace;}
+  td.num{text-align:right;}
+  th.num{text-align:right;}
+  .rank{color:var(--muted-2); font-family:'IBM Plex Mono',monospace; font-size:11.5px;}
+
+  .search-box{
+    display:flex; align-items:center; gap:7px;
+    border:1px solid var(--border); border-radius:8px; padding:7px 11px;
+    background:#F6FAFE; min-width:220px;
+  }
+  .search-box svg{width:13px;height:13px; color:var(--muted-2); flex:none;}
+  .search-box input{
+    border:none; background:none; outline:none; font-family:inherit; font-size:12.5px;
+    width:100%; color:var(--ink);
+  }
+
+  .chip-delta{
+    display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:20px;
+    font-size:11px; font-weight:700; font-family:'IBM Plex Mono',monospace;
+  }
+  .chip-delta.up{background:var(--green-bg); color:var(--green);}
+  .chip-delta.down{background:var(--red-bg); color:var(--red);}
+  .chip-delta.flat{background:var(--border-soft); color:var(--muted);}
+
+  .legend-row{display:flex; gap:18px; flex-wrap:wrap; margin-top:10px;}
+  .legend-item{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted);}
+  .legend-sw{width:10px; height:10px; border-radius:3px;}
+
+  /* MoM controls */
+  .mom-controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  .period-select{
+    border:1px solid var(--border); background:#F6FAFE; border-radius:8px;
+    padding:8px 11px; font-size:12.5px; font-family:inherit; color:var(--ink); font-weight:500;
+    cursor:pointer;
+  }
+  .vs-badge{
+    background:var(--navy); color:#fff; font-size:10.5px; font-weight:700; padding:5px 9px;
+    border-radius:20px;
+  }
+
+  .mom-kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px;}
+  .mom-kpi{
+    border:1px solid var(--border-soft); border-radius:10px; padding:13px 15px; background:#FBFDFF;
+  }
+  .mom-kpi .lbl{font-size:11px; color:var(--muted); font-weight:600;}
+  .mom-kpi .val{font-size:19px; font-weight:700; margin-top:6px; font-family:'IBM Plex Mono',monospace;}
+
+  /* segmented level toggle (Wing / Region / Territory) */
+  .seg-group{
+    display:inline-flex; background:#EEF4FB; border:1px solid var(--border); border-radius:9px; padding:3px; gap:2px;
+  }
+  .seg-btn{
+    padding:7px 14px; border-radius:7px; font-size:12.5px; font-weight:600; color:var(--muted);
+    cursor:pointer; user-select:none; white-space:nowrap; transition:background .12s ease, color .12s ease;
+  }
+  .seg-btn:hover{color:var(--blue);}
+  .seg-btn.active{background:#fff; color:var(--blue); box-shadow:0 1px 4px rgba(10,30,60,.12);}
+  .section-divider{
+    border-top:1px solid var(--border-soft); margin:22px 0 18px; padding-top:18px;
+  }
+  .sub-title{font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:2px;}
+  .sub-desc{font-size:11.5px; color:var(--muted); margin-bottom:14px;}
+
+  /* data-label show/hide toggle switch on charts */
+  .toggle-switch{
+    display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);
+    cursor:pointer; user-select:none; font-weight:500; white-space:nowrap;
+  }
+  .toggle-switch input{display:none;}
+  .toggle-track{
+    width:34px; height:19px; border-radius:12px; background:#D8E4F0; position:relative;
+    transition:background .15s ease; flex:none;
+  }
+  .toggle-track::after{
+    content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
+    background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:transform .15s ease;
+  }
+  .toggle-switch input:checked + .toggle-track{background:var(--accent);}
+  .toggle-switch input:checked + .toggle-track::after{transform:translateX(15px);}
+  .toggle-switch:hover{color:var(--blue);}
+
+  .foot-note{
+    text-align:center; color:var(--muted-2); font-size:11.5px; padding:24px 0 6px;
+  }
+
+  .empty-row{padding:30px; text-align:center; color:var(--muted-2); font-size:13px;}
+
+  @media (max-width:1100px){
+    .kpi-grid{grid-template-columns:repeat(2,1fr);}
+    .grid-2{grid-template-columns:1fr;}
+    .mom-kpis{grid-template-columns:repeat(2,1fr);}
+  }
+  @media (max-width:640px){
+    .shell{padding:0 16px 40px;}
+    header.top{padding:20px 16px;}
+    .top-row{flex-direction:column;}
+    .kpi-grid{grid-template-columns:1fr 1fr;}
+  }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet">
+<style id="m3">
+/* ===== Material Design 3 theme layer ===== */
+:root{
+  --md-primary:#0B57D0; --md-on-primary:#fff; --md-primary-container:#D3E3FD; --md-surface:#F8FAFD;
+  --md-surface-1:#fff; --md-outline:#C4D0E0;
+  --e1:0 1px 2px rgba(0,0,0,.12),0 1px 3px 1px rgba(0,0,0,.08);
+  --e2:0 1px 2px rgba(0,0,0,.14),0 2px 6px 2px rgba(0,0,0,.09);
+  --e3:0 4px 8px 3px rgba(0,0,0,.1),0 1px 3px rgba(0,0,0,.14);
+  --ease:cubic-bezier(.2,0,0,1);
+  --accent:#0B57D0; --accent-soft:#4C8DF6; --blue:#0B57D0; --shadow:var(--e1);
+  --radius-l:20px; --radius-m:14px;
+}
+body{font-family:'Roboto',system-ui,sans-serif; background:radial-gradient(900px 380px at 10% -8%,rgba(11,87,208,.10),transparent 60%),var(--md-surface);}
+.num,.kpi .val,.mom-kpi .val,.fcount b,.rank{font-family:'Roboto Mono',monospace !important;}
+.ms{font-family:'Material Symbols Rounded'; font-size:20px; line-height:1; font-weight:normal; font-style:normal; display:inline-block; vertical-align:middle; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga';}
+/* top app bar */
+header.top{background:linear-gradient(120deg,#062A63 0%,#0B57D0 70%,#4C8DF6 130%); box-shadow:var(--e2); border-radius:0 0 28px 28px; animation:hdrIn .6s var(--ease) both;}
+header.top::before{content:"";position:absolute;left:-80px;bottom:-120px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.14),transparent 70%);animation:floaty 9s ease-in-out infinite;}
+header.top::after{animation:floaty 12s ease-in-out infinite reverse;}
+.mark{border-radius:16px; background:rgba(255,255,255,.18); box-shadow:none; backdrop-filter:blur(6px); animation:pop .7s .15s var(--ease) both;}
+h1{font-weight:500; letter-spacing:0;}
+.meta-pill{border-radius:10px; background:rgba(255,255,255,.14);}
+.dot:not(.off){animation:pulse 2s infinite;}
+/* buttons: pill, state layer, ripple */
+.btn{border-radius:100px; padding:10px 22px; font-weight:500; letter-spacing:.1px; position:relative; overflow:hidden; transition:box-shadow .2s var(--ease),background .2s,transform .2s var(--ease);}
+.btn-primary{background:var(--md-primary-container); color:#041E49; box-shadow:var(--e1);}
+.btn-primary:hover{box-shadow:var(--e2); transform:translateY(-1px);}
+.btn-primary svg path{stroke:#041E49;}
+.btn-ghost{background:transparent; border-color:rgba(255,255,255,.5);}
+.btn:disabled{opacity:.75; cursor:progress;}
+.ripple{position:absolute; border-radius:50%; background:currentColor; opacity:.18; transform:scale(0); animation:rip .6s var(--ease) forwards; pointer-events:none;}
+/* surfaces */
+.panel,.kpi,.mom-kpi,.dropzone{border:none !important; border-radius:var(--radius-l); background:var(--md-surface-1); box-shadow:var(--e1); transition:box-shadow .25s var(--ease),transform .25s var(--ease);}
+.panel{animation:rise .5s var(--ease) both;}
+.kpi,.mom-kpi{animation:rise .5s var(--ease) both;}
+.kpi:hover,.mom-kpi:hover{box-shadow:var(--e3); transform:translateY(-4px);}
+.kpi:nth-child(1){animation-delay:.02s}.kpi:nth-child(2){animation-delay:.07s}.kpi:nth-child(3){animation-delay:.12s}
+.kpi:nth-child(4){animation-delay:.17s}.kpi:nth-child(5){animation-delay:.22s}.kpi:nth-child(6){animation-delay:.27s}.kpi:nth-child(n+7){animation-delay:.32s}
+.kpi .lbl{letter-spacing:.5px;}
+/* filter bar & chips */
+.msel-btn{border-radius:10px; border:1px solid var(--md-outline); transition:all .2s var(--ease); position:relative; overflow:hidden;}
+.msel-btn:hover{background:#F0F5FD; box-shadow:var(--e1);}
+.msel-btn.active{background:var(--md-primary-container); border-color:transparent; color:#041E49;}
+.msel-panel{border-radius:16px !important; box-shadow:var(--e3) !important; border:none !important; animation:menu .2s var(--ease);}
+.msel-opt{border-radius:8px;}
+.search-box,.msel-search input,.period-select{border-radius:100px;}
+/* tabs: M3 primary tabs with animated indicator */
+.tab{position:relative; transition:color .2s,background .2s; border-radius:12px 12px 0 0; overflow:hidden; font-weight:500;}
+.tab:hover{background:rgba(11,87,208,.06);}
+.tab.active{color:var(--md-primary);}
+.tab::after{content:"";position:absolute;left:50%;bottom:0;height:3px;width:0;border-radius:3px 3px 0 0;background:var(--md-primary);transform:translateX(-50%);transition:width .3s var(--ease);}
+.tab.active::after{width:70%;}
+.tabpane{animation:paneIn .4s var(--ease);}
+/* segmented buttons & switch */
+.seg-group{border-radius:100px; background:#E9EFF9; padding:3px;}
+.seg-btn{border-radius:100px; transition:all .25s var(--ease); position:relative; overflow:hidden;}
+.seg-btn.active{background:var(--md-primary-container); color:#041E49; box-shadow:none;}
+.toggle-track{transition:background .25s;} .toggle-track::after{transition:transform .25s var(--ease);}
+/* tables */
+.tbl-wrap{border-radius:16px; border:1px solid #E3EAF4;}
+table thead th{background:#EAF1FB !important; font-weight:500;}
+tbody tr{transition:background .15s; animation:rowIn .3s var(--ease) both;}
+tbody tr:hover{background:#F0F5FD;}
+tbody tr:nth-child(1){animation-delay:.00s}tbody tr:nth-child(2){animation-delay:.02s}tbody tr:nth-child(3){animation-delay:.04s}
+tbody tr:nth-child(4){animation-delay:.06s}tbody tr:nth-child(5){animation-delay:.08s}tbody tr:nth-child(6){animation-delay:.10s}
+tbody tr:nth-child(7){animation-delay:.12s}tbody tr:nth-child(8){animation-delay:.14s}tbody tr:nth-child(n+9){animation-delay:.16s}
+.chip-delta{border-radius:8px; font-weight:500;}
+/* loader / error */
+.spinner{border-color:#D3E3FD; border-top-color:var(--md-primary); animation:spin .8s linear infinite;}
+#emptyState .dropzone{animation:rise .5s var(--ease) both; border-radius:28px;}
+/* ===== professional polish ===== */
+.kpi{padding-right:64px; overflow:hidden;}
+.kpi::before{display:none;}
+.kpi::after{font-family:'Material Symbols Rounded'; font-size:24px; position:absolute; right:16px; top:16px; width:42px; height:42px; border-radius:14px; display:flex; align-items:center; justify-content:center; transition:transform .3s var(--ease);}
+.kpi:hover::after{transform:rotate(-8deg) scale(1.12);}
+.kpi:nth-child(1)::after{content:'local_shipping'; background:#E3EEFF; color:#0B57D0;}
+.kpi:nth-child(2)::after{content:'storefront'; background:#DDF5F2; color:#00897B;}
+.kpi:nth-child(3)::after{content:'inventory_2'; background:#EEE8FF; color:#6B3FD4;}
+.kpi:nth-child(4)::after{content:'category'; background:#FFF1DC; color:#E07B00;}
+.kpi:nth-child(5)::after{content:'payments'; background:#E4F6EA; color:#1B8A5A;}
+.kpi{border-top:3px solid transparent !important;}
+.kpi:nth-child(1){border-top-color:#0B57D0 !important}.kpi:nth-child(2){border-top-color:#00897B !important}
+.kpi:nth-child(3){border-top-color:#6B3FD4 !important}.kpi:nth-child(4){border-top-color:#E07B00 !important}.kpi:nth-child(5){border-top-color:#1B8A5A !important}
+.kpi .val{font-size:26px; letter-spacing:-.5px; color:#0A2347;}
+.panel-title{position:relative; padding-left:14px;}
+.panel-title::before{content:""; position:absolute; left:0; top:3px; bottom:3px; width:4px; border-radius:4px; background:linear-gradient(180deg,#4C8DF6,#0B57D0);}
+.panel canvas{filter:drop-shadow(0 6px 10px rgba(11,87,208,.08));}
+.tbl-wrap thead th{position:sticky; top:0; z-index:2; text-transform:uppercase; font-size:11px; letter-spacing:.5px; color:#4A5B73;}
+tbody tr:nth-child(even){background:#FAFCFF;}
+.legend-sw{border-radius:50%;}
+/* loading animation */
+.bars-loader{display:flex;align-items:flex-end;justify-content:center;gap:7px;height:62px;margin:0 auto 20px;}
+.bars-loader i{width:11px;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,#4C8DF6,#0B57D0);animation:barLoad 1.1s ease-in-out infinite;height:20px;box-shadow:0 4px 10px -2px rgba(11,87,208,.45);}
+.bars-loader i:nth-child(2){animation-delay:.12s}.bars-loader i:nth-child(3){animation-delay:.24s}
+.bars-loader i:nth-child(4){animation-delay:.36s}.bars-loader i:nth-child(5){animation-delay:.48s}
+.lin-prog,.top-prog{height:4px;border-radius:4px;background:#D3E3FD;overflow:hidden;position:relative;}
+.lin-prog span,.top-prog span{position:absolute;top:0;bottom:0;left:0;width:40%;border-radius:4px;background:linear-gradient(90deg,#0B57D0,#4C8DF6);animation:indet 1.4s cubic-bezier(.65,.1,.35,.9) infinite;}
+.top-prog{position:fixed;top:0;left:0;right:0;z-index:200;border-radius:0;background:transparent;opacity:0;transition:opacity .3s;pointer-events:none;}
+.top-prog.on{opacity:1;}
+#loadMsg{transition:opacity .25s;}
+@keyframes barLoad{0%,100%{height:18px;opacity:.55}50%{height:60px;opacity:1}}
+@keyframes indet{0%{left:-40%}100%{left:100%}}
+/* keyframes */
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes rowIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+@keyframes paneIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes menu{from{opacity:0;transform:scale(.95) translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes hdrIn{from{opacity:0;transform:translateY(-24px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:scale(.4) rotate(-20deg)}to{opacity:1;transform:none}}
+@keyframes rip{to{transform:scale(4);opacity:0}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(87,214,141,.6)}70%{box-shadow:0 0 0 8px rgba(87,214,141,0)}100%{box-shadow:0 0 0 0 rgba(87,214,141,0)}}
+@keyframes floaty{0%,100%{transform:translate(0,0)}50%{transform:translate(24px,18px)}}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;}}
+.svgchart{width:100%; overflow-x:auto; min-height:200px;}
+.svgchart svg{display:block; max-width:none;}
+.svgchart .ax{font:11px 'IBM Plex Mono',ui-monospace,monospace; fill:#5C7086;}
+.svgchart .lbl{font:700 10.5px 'IBM Plex Mono',ui-monospace,monospace; fill:#0F2A4A;}
+.svgchart .bar{transform-box:fill-box; transform-origin:50% 100%; animation:barGrow .45s ease-out both;}
+.svg-empty{padding:70px 10px; text-align:center; color:#5C7086; font-size:13px;}
+@keyframes barGrow{from{transform:scaleY(0)}to{transform:none}}
+.svgchart.noanim .bar{animation:none;}
+tbody tr{animation:none !important;}
+.kpi,.mom-kpi{animation:none !important;}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <div class="brand-mark">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 18V10M10 18V5M16 18V13M22 18V8" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <h1>SKU wise ND & Sales Dashboard</h1>
+        <div class="subtitle">Month-on-month trend, drop size and distribution performance across the SKU portfolio</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span class="meta-pill" id="dataStatus"><span class="dot off" id="dataDot"></span><span id="dataStatusText">Loading data…</span></span>
+      <button class="btn btn-primary" id="refreshBtn">
+        <span class="ms">sync</span>
+        Refresh data
+      </button>
+      <button class="btn btn-ghost" id="resetBtn">Reset filters</button>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+  <!-- EMPTY STATE -->
+  <div class="empty-wrap" id="emptyState">
+    <div class="dropzone" id="dropzone">
+      <div id="loadingBox">
+        <div class="bars-loader"><i></i><i></i><i></i><i></i><i></i></div>
+        <h3 id="loadMsg" style="margin:0;">Loading…</h3>
+      </div>
+      <div id="errorBox" style="display:none;">
+        <div class="ic" style="background:linear-gradient(135deg,#FDEDEA,#FADBD5);color:#C7402D;">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none"><path d="M12 8v5m0 3.5v.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h3>Loading failed</h3>
+        <p id="errorMsg">Something went wrong.</p>
+        <div class="dz-actions">
+          <button class="btn btn-primary" id="retryBtn">Try again</button>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard" style="display:none;">
+
+    <div class="filterbar">
+      <div class="filterbar-inner">
+        <div class="filter-row" id="filterRow"></div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="trend">Month-wise Trend <span class="n" id="tabTrendN">0</span></div>
+      <div class="tab" data-tab="overview">All-SKU ND &amp; Sales <span class="n" id="tabOverN">0</span></div>
+      <div class="tab" data-tab="geo">Wing &amp; Territory Performance <span class="n" id="tabGeoN">0</span></div>
+      <div class="tab" data-tab="mom">Month-on-Month Comparison</div>
+    </div>
+
+    <!-- TAB 1: TREND -->
+    <div class="tabpane" id="pane-trend">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Month-wise Sales (Sum of Delivery Volume)</div>
+            <div class="panel-desc">Trend of total delivery volume across the selected filters, ordered chronologically</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="salesLabelsToggle">
+            <span class="toggle-track"></span>
+            Show data labels
+          </label>
+        </div>
+        <div id="salesChart" class="svgchart"></div>
+        <div id="chartFallback" style="display:none; padding:26px 4px; color:var(--muted); font-size:12.5px; line-height:1.7;"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Month-wise Numeric Distribution (ND)</div>
+            <div class="panel-desc">Trend of total Distinct Count of Outlet across the selected filters, ordered chronologically</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="ndLabelsToggle">
+            <span class="toggle-track"></span>
+            Show data labels
+          </label>
+        </div>
+        <div id="ndChart" class="svgchart"></div>
+        <div id="ndChartFallback" style="display:none; padding:26px 4px; color:var(--muted); font-size:12.5px; line-height:1.7;"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Month-wise Numeric Distribution &amp; Drop Size</div>
+            <div class="panel-desc">Distinct Count of Outlet, Sales and the resulting Drop Size (Sales &divide; ND) by month</div>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table id="trendTable">
+            <thead>
+              <tr>
+                <th data-key="period">Period <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="nd">ND (Outlets) <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="sales">Sales (Volume) <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="dropsize">Drop Size <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="value">Delivery Value <span class="arrow">&#9662;</span></th>
+              </tr>
+            </thead>
+            <tbody id="trendTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: OVERVIEW -->
+    <div class="tabpane" id="pane-overview" style="display:none;">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">All-SKU Numeric Distribution &amp; Sales Overview</div>
+            <div class="panel-desc">Every SKU in the current filter selection, with total ND, total Sales and calculated Drop Size (Sales &divide; ND)</div>
+          </div>
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <input type="text" id="skuSearch" placeholder="Search SKU, brand or category">
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table id="overviewTable">
+            <thead>
+              <tr>
+                <th style="width:34px;">#</th>
+                <th data-key="sku">SKU Name <span class="arrow">&#9662;</span></th>
+                <th data-key="brand">Brand <span class="arrow">&#9662;</span></th>
+                <th data-key="category">Category <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="nd">ND (Outlets) <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="sales">Sales (Volume) <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="dropsize">Drop Size <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="value">Delivery Value <span class="arrow">&#9662;</span></th>
+              </tr>
+            </thead>
+            <tbody id="overviewTableBody"></tbody>
+          </table>
+        </div>
+        <div class="legend-row">
+          <div class="legend-item"><span class="legend-sw" style="background:var(--accent);"></span> Drop Size = Sum of Delivery Volume &divide; Distinct Count of Outlet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: GEOGRAPHY PERFORMANCE (Wing / Region / Territory) -->
+    <div class="tabpane" id="pane-geo" style="display:none;">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Wing &amp; Territory Performance</div>
+            <div class="panel-desc">Compare every Wing, Region or Territory side-by-side — no need to filter one at a time to spot who's doing well or badly</div>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <div class="seg-group" id="geoLevelToggle">
+              <div class="seg-btn" data-level="wing">Wing</div>
+              <div class="seg-btn" data-level="region">Region</div>
+              <div class="seg-btn active" data-level="territory">Territory</div>
+            </div>
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <input type="text" id="geoSearch" placeholder="Search wing, region or territory">
+            </div>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table id="geoTable">
+            <thead>
+              <tr>
+                <th style="width:34px;">#</th>
+                <th data-key="wing">Wing <span class="arrow">&#9662;</span></th>
+                <th data-key="region">Region <span class="arrow">&#9662;</span></th>
+                <th data-key="territory">Territory <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="nd">ND (Outlets) <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="sales">Sales (Volume) <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="dropsize">Drop Size <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="value">Delivery Value <span class="arrow">&#9662;</span></th>
+              </tr>
+            </thead>
+            <tbody id="geoTableBody"></tbody>
+          </table>
+        </div>
+        <div class="legend-row">
+          <div class="legend-item"><span class="legend-sw" style="background:var(--accent);"></span> Grouped by the selected level &mdash; "All" means every value under that level is rolled up together.</div>
+        </div>
+
+        <div class="section-divider">
+          <div class="sub-title">Month-on-Month Comparison — by Wing / Region / Territory</div>
+          <div class="sub-desc">See which Wings, Regions or Territories improved or declined between two periods, at the same grouping level selected above</div>
+        </div>
+        <div class="panel-head" style="margin-bottom:14px;">
+          <div></div>
+          <div class="mom-controls">
+            <select class="period-select" id="geoMomBase"></select>
+            <span class="vs-badge">VS</span>
+            <select class="period-select" id="geoMomCompare"></select>
+          </div>
+        </div>
+        <div class="mom-kpis" id="geoMomKpis"></div>
+        <div class="tbl-wrap">
+          <table id="geoMomTable">
+            <thead>
+              <tr>
+                <th data-key="wing">Wing <span class="arrow">&#9662;</span></th>
+                <th data-key="region">Region <span class="arrow">&#9662;</span></th>
+                <th data-key="territory">Territory <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="ndBase">ND Base <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="ndComp">ND Compare <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="ndDelta">ND &Delta;% <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="salesBase">Sales Base <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="salesComp">Sales Compare <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="salesDelta">Sales &Delta;% <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="dsDelta">Drop Size &Delta;% <span class="arrow">&#9662;</span></th>
+              </tr>
+            </thead>
+            <tbody id="geoMomTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: MOM -->
+    <div class="tabpane" id="pane-mom" style="display:none;">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Month-on-Month Comparison</div>
+            <div class="panel-desc">Pick two periods to see which SKUs gained or lost ND, Sales and Drop Size</div>
+          </div>
+          <div class="mom-controls">
+            <select class="period-select" id="momBase"></select>
+            <span class="vs-badge">VS</span>
+            <select class="period-select" id="momCompare"></select>
+          </div>
+        </div>
+
+        <div class="mom-kpis" id="momKpis"></div>
+
+        <div class="tbl-wrap">
+          <table id="momTable">
+            <thead>
+              <tr>
+                <th data-key="sku">SKU Name <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="ndBase">ND Base <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="ndComp">ND Compare <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="ndDelta">ND &Delta;% <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="salesBase">Sales Base <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="salesComp">Sales Compare <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="salesDelta">Sales &Delta;% <span class="arrow">&#9662;</span></th>
+                <th class="num" data-key="dsDelta">Drop Size &Delta;% <span class="arrow">&#9662;</span></th>
+              </tr>
+            </thead>
+            <tbody id="momTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot-note">Data processed locally in your browser &middot; <span id="rowCountFoot">0</span> rows loaded</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ================= STATE ================= */
+  const FILTER_DIMS = [
+    {key:'line', label:'Line'},
+    {key:'year', label:'Year'},
+    {key:'month', label:'Month'},
+    {key:'wing', label:'Wing'},
+    {key:'region', label:'Region'},
+    {key:'territory', label:'Territory'},
+    {key:'category', label:'Product Category'},
+    {key:'brand', label:'Brand'},
+    {key:'sku', label:'SKU'},
+  ];
+  const MONTH_ORDER = {january:1,jan:1,february:2,feb:2,march:3,mar:3,april:4,apr:4,may:5,june:6,jun:6,
+    july:7,jul:7,august:8,aug:8,september:9,sep:9,sept:9,october:10,oct:10,november:11,nov:11,december:12,dec:12};
+  const MONTH_ABBR = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'};
+
+  let RAW = [];               // normalized rows
+  let ACTIVE = {};             // key -> Set of selected values (empty set = all)
+  let sortState = {trend:{key:'period',dir:1}, overview:{key:'sales',dir:-1}, mom:{key:'salesDelta',dir:-1}, geo:{key:'sales',dir:-1}, geoMom:{key:'salesDelta',dir:-1}};
+  /* ===== Chart.js professional theme ===== */
+  if(typeof Chart !== 'undefined'){
+    Chart.defaults.font.family = "'Roboto', system-ui, sans-serif";
+    Chart.defaults.color = '#5B6B82';
+    Chart.defaults.animation = {
+      duration: 1100, easing: 'easeOutQuart',
+      delay: (c)=> (c.type==='data' && c.mode==='default') ? c.dataIndex*55 + c.datasetIndex*70 : 0
+    };
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
+    Chart.defaults.plugins.legend.labels.pointStyle = 'rectRounded';
+    Chart.defaults.plugins.legend.labels.padding = 16;
+    const tt = Chart.defaults.plugins.tooltip;
+    tt.backgroundColor = 'rgba(24,32,48,.95)'; tt.cornerRadius = 12; tt.padding = 12; tt.boxPadding = 6;
+    tt.usePointStyle = true; tt.titleMarginBottom = 8; tt.caretSize = 6; tt.borderColor = 'rgba(255,255,255,.08)'; tt.borderWidth = 1;
+  }
+  let salesChart = null;
+  let ndChart = null;
+  let showSalesLabels = false;
+  let showNdLabels = false;
+  let geoLevel = 'territory'; // 'wing' | 'region' | 'territory'
+
+  FILTER_DIMS.forEach(d=> ACTIVE[d.key] = new Set());
+
+  /* ================= HELPERS ================= */
+  function cleanNum(v){
+    if (v === null || v === undefined) return 0;
+    if (typeof v === 'number') return v;
+    const s = String(v).replace(/[, ]+/g,'').trim();
+    const n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+  function fmtNum(n, decimals){
+    decimals = decimals === undefined ? 0 : decimals;
+    if (n===undefined || n===null || isNaN(n)) return '—';
+    return n.toLocaleString('en-US', {minimumFractionDigits:decimals, maximumFractionDigits:decimals});
+  }
+  function fmtPct(n){
+    if (n===undefined || n===null || !isFinite(n)) return '—';
+    const s = n>0 ? '+' : '';
+    return s + n.toFixed(1) + '%';
+  }
+  function monthIndex(m){
+    if(!m) return 99;
+    const k = String(m).toLowerCase().trim();
+    return MONTH_ORDER[k] || 99;
+  }
+  // Formats a Year/Month pair as a compact label, e.g. "Jan'25" — used on chart axes,
+  // the trend table, and every period dropdown so long "January 2025" labels don't clutter the UI.
+  function shortPeriod(year, month){
+    const idx = monthIndex(month);
+    const abbr = MONTH_ABBR[idx] || (month ? String(month).slice(0,3) : '');
+    const yy = year ? String(year).slice(-2) : '';
+    return abbr + (yy ? "'" + yy : '');
+  }
+
+  // Colour palette used to tell different years apart on the trend charts.
+  // Earliest year gets deep navy, next gets bright accent blue, then further shades if more years exist.
+  const YEAR_PALETTE = [
+    {solid:'#0B3D91', soft:'rgba(11,61,145,0.92)'},
+    {solid:'#2F80ED', soft:'rgba(47,128,237,0.92)'},
+    {solid:'#00A3A3', soft:'rgba(0,163,163,0.92)'},
+    {solid:'#7C4DFF', soft:'rgba(124,77,255,0.90)'},
+    {solid:'#1B8A5A', soft:'rgba(27,138,90,0.90)'},
+    {solid:'#B9791A', soft:'rgba(185,121,26,0.90)'},
+  ]
+  function replaceCanvas(old){
+    const c = document.createElement('canvas');
+    c.id = old.id; c.setAttribute('height','90'); c.style.display = 'block';
+    old.parentNode.replaceChild(c, old);
+    return c;
+  }
+  // Data-label / best-worst markers are overlays: if one ever errors, skip it but never blank the chart.
+  function safePlugin(p){
+    const f = p.afterDatasetsDraw;
+    p.afterDatasetsDraw = function(chart){
+      try{ f.call(p, chart); }catch(e){ console.warn('Chart overlay skipped:', e); }
+    };
+    return p;
+  }
+  // Builds one bar-chart dataset per year (each in its own colour) so 2025 vs 2026 (etc.)
+  // data is instantly distinguishable. Falls back to a single gradient-filled dataset
+  // when the current selection only spans one year.
+  function buildYearBarDatasets(ctx, rows, valueKey, singleLabel, singleGradientStops){
+    const years = Array.from(new Set(rows.map(r=>r.year))).filter(Boolean).sort();
+    if(years.length<=1){
+      const gradient = (c)=>{
+        const a = c.chart.chartArea;
+        if(!a) return singleGradientStops[0];
+        const g = c.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom);
+        g.addColorStop(0, singleGradientStops[0]);
+        g.addColorStop(1, singleGradientStops[1]);
+        return g;
+      };
+      return {
+        datasets: [{
+          type:'bar', label: singleLabel, data: rows.map(r=>r[valueKey]),
+          backgroundColor: gradient, borderRadius:{topLeft:9,topRight:9,bottomLeft:2,bottomRight:2}, borderSkipped:false, maxBarThickness:48, order:2, hoverBackgroundColor:singleGradientStops[0],
+        }],
+        multiYear: false,
+      };
+    }
+    const thickness = Math.max(16, 44 - years.length*3);
+    const datasets = years.map((yr, idx)=>{
+      const c = YEAR_PALETTE[idx % YEAR_PALETTE.length];
+      return {
+        type:'bar', label: String(yr), stack:'yearBars',
+        data: rows.map(r=> r.year===yr ? r[valueKey] : null),
+        backgroundColor: c.soft, borderRadius:7, borderSkipped:false, maxBarThickness: thickness, order:2,
+      };
+    });
+    return { datasets, multiYear:true };
+  }
+
+  // Draws a rounded rectangle path (small helper since ctx.roundRect isn't available everywhere).
+  function roundRectPath(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+  // Builds a Chart.js plugin that draws each bar's value above it, only when `getEnabled()` returns true.
+  // Each label sits on a small light "pill" background for contrast against the bars/line, so it stays
+  // readable even where labels sit close together or overlap the trend line.
+  // Kept as a small custom plugin (no extra CDN dependency) so it can be toggled on/off per chart.
+  function makeValueLabelsPlugin(getEnabled){
+    return {
+      id: 'valueLabels',
+      afterDatasetsDraw(chart){
+        if(!getEnabled()) return;
+        const ctx = chart.ctx;
+        chart.data.datasets.forEach((dataset, dsIndex)=>{
+          if(dataset.type !== 'bar') return;
+          const meta = chart.getDatasetMeta(dsIndex);
+          if(!meta || meta.hidden) return;
+          meta.data.forEach((bar, index)=>{
+            const value = dataset.data[index];
+            if(value === null || value === undefined) return;
+            const pos = bar.tooltipPosition ? bar.tooltipPosition() : {x:bar.x, y:bar.y};
+            const text = fmtNum(value);
+            ctx.save();
+            ctx.font = "700 10.5px 'IBM Plex Mono', ui-monospace, monospace";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const textW = ctx.measureText(text).width;
+            const padX = 6, boxH = 16;
+            const boxW = textW + padX*2;
+            const cx = pos.x;
+            const cy = pos.y - 13;
+            roundRectPath(ctx, cx - boxW/2, cy - boxH/2, boxW, boxH, 5);
+            ctx.fillStyle = 'rgba(255,255,255,0.94)';
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(18,58,102,0.18)';
+            ctx.stroke();
+            ctx.fillStyle = '#0F2A4A';
+            ctx.fillText(text, cx, cy + 0.5);
+            ctx.restore();
+          });
+        });
+      }
+    };
+  }
+
+  // Builds a Chart.js plugin that marks the single highest and lowest point on the trend
+  // line with a distinct icon (🏆 for the best period, ⚠️ for the one needing attention),
+  // so the strongest and weakest months jump out at a glance without reading every number.
+  function makeExtremesPlugin(getLabelsEnabled){
+    return {
+      id: 'extremesMarkers',
+      afterDatasetsDraw(chart){
+        const ctx = chart.ctx;
+        let lineIdx = -1;
+        chart.data.datasets.forEach((ds, i)=>{ if(ds.type === 'line') lineIdx = i; });
+        if(lineIdx === -1) return;
+        const data = chart.data.datasets[lineIdx].data;
+        const meta = chart.getDatasetMeta(lineIdx);
+        if(!meta || !meta.data || !meta.data.length) return;
+
+        let maxVal = -Infinity, minVal = Infinity, maxIdx = -1, minIdx = -1;
+        data.forEach((v,i)=>{
+          if(v === null || v === undefined) return;
+          if(v > maxVal){ maxVal = v; maxIdx = i; }
+          if(v < minVal){ minVal = v; minIdx = i; }
+        });
+        if(maxIdx === -1) return;
+
+        const labelsOn = getLabelsEnabled();
+        const iconOffset = labelsOn ? -34 : -20;
+
+        function drawIcon(idx, emoji){
+          const point = meta.data[idx];
+          if(!point) return;
+          const pos = point.tooltipPosition ? point.tooltipPosition() : {x:point.x, y:point.y};
+          ctx.save();
+          ctx.font = '17px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(emoji, pos.x, pos.y + iconOffset);
+          ctx.restore();
+        }
+        drawIcon(maxIdx, '🏆');
+        if(minIdx !== -1 && minIdx !== maxIdx) drawIcon(minIdx, '⚠️');
+      }
+    };
+  }
+  function findHeader(headers, patterns){
+    const low = headers.map(h=>({orig:h, low:String(h).toLowerCase().replace(/[^a-z0-9]/g,'')}));
+    for(const p of patterns){
+      const pp = p.replace(/[^a-z0-9]/g,'');
+      const hit = low.find(h=>h.low.includes(pp));
+      if(hit) return hit.orig;
+    }
+    return null;
+  }
+
+  /* ================= DATA INGEST ================= */
+  function normalizeRows(rows){
+    if(!rows.length) return [];
+    const headers = Object.keys(rows[0]);
+    const map = {
+      line: headers.find(h=>String(h).replace(/^\ufeff/,'').trim().toLowerCase()==='line') || null,
+      year: findHeader(headers, ['year']),
+      month: findHeader(headers, ['month']),
+      wing: findHeader(headers, ['wing']),
+      region: findHeader(headers, ['region']),
+      territory: findHeader(headers, ['territory']),
+      category: findHeader(headers, ['productcategory','category']),
+      brand: findHeader(headers, ['brand']),
+      material: findHeader(headers, ['material']),
+      sku: findHeader(headers, ['skuname','sku']),
+      nd: findHeader(headers, ['distinctcountofoutlet','outlet','distribution']),
+      volume: findHeader(headers, ['deliveryvolume','volume']),
+      value: findHeader(headers, ['deliveryvalue','value']),
+    };
+    return rows.map(r=>({
+      line: map.line ? String(r[map.line]).trim() : '',
+      year: map.year ? String(r[map.year]).trim() : '',
+      month: map.month ? String(r[map.month]).trim() : '',
+      wing: map.wing ? String(r[map.wing]).trim() : '',
+      region: map.region ? String(r[map.region]).trim() : '',
+      territory: map.territory ? String(r[map.territory]).trim() : '',
+      category: map.category ? String(r[map.category]).trim() : '',
+      brand: map.brand ? String(r[map.brand]).trim() : '',
+      material: map.material ? String(r[map.material]).trim() : '',
+      sku: map.sku ? String(r[map.sku]).trim() : '',
+      nd: map.nd ? cleanNum(r[map.nd]) : 0,
+      volume: map.volume ? cleanNum(r[map.volume]) : 0,
+      value: map.value ? cleanNum(r[map.value]) : 0,
+    })).filter(r=> r.sku || r.month);
+  }
+
+  /* ================= GOOGLE SHEET LOADER ================= */
+  const SHEET_ID = '1RpdFtfN1yH6iGLAowJqbA6WWZtB5jNqH4EXjflRZFKY';
+  const SHEET_GID = '';   // optional: put a tab's gid here to load a specific tab (blank = first tab)
+  const SHEET_URLS = [
+    'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv' + (SHEET_GID ? '&gid=' + SHEET_GID : ''),
+    'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export?format=csv' + (SHEET_GID ? '&gid=' + SHEET_GID : '')
+  ];
+
+  function loadCSVText(text){
+    const parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
+    const rows = normalizeRows(parsed.data);
+    if(!rows.length) throw new Error('No data rows were found.');
+    ingest(rows);
+  }
+
+  function setBusy(on){}
+  function showLoading(){
+    setBusy(true);
+    document.getElementById('loadingBox').style.display = 'block';
+    document.getElementById('errorBox').style.display = 'none';
+    document.getElementById('refreshBtn').classList.add('loading');
+    document.getElementById('refreshBtn').disabled = true;
+    // first load only: show the loader card; on refresh keep the dashboard visible
+    if(!RAW.length){
+      document.getElementById('emptyState').style.display = 'flex';
+      document.getElementById('dashboard').style.display = 'none';
+    }
+    document.getElementById('dataStatusText').textContent = 'Loading data…';
+    document.getElementById('dataDot').className = 'dot off';
+  }
+  function showLoadError(msg){
+    setBusy(false);
+    document.getElementById('refreshBtn').classList.remove('loading');
+    document.getElementById('refreshBtn').disabled = false;
+    document.getElementById('dataStatusText').textContent = 'Loading failed';
+    document.getElementById('dataDot').className = 'dot off';
+    if(!RAW.length){
+      document.getElementById('loadingBox').style.display = 'none';
+      document.getElementById('errorBox').style.display = 'block';
+      document.getElementById('errorMsg').textContent = msg;
+    } else {
+      alert('Loading failed: ' + msg + '\nShowing the previously loaded data.');
+      updateDataStatus('Previous data', true);
+    }
+  }
+  let loading = false, lastCsv = '', lastLoadAt = 0;
+  async function loadFromSheet(silent){
+    if(loading) return;
+    silent = (silent === true);
+    loading = true; lastLoadAt = Date.now();
+    if(!silent) showLoading();
+    const bust = (u)=> u + (u.includes('?') ? '&' : '?') + '_=' + Date.now();
+    const btn = document.getElementById('refreshBtn');
+    let lastErr = null;
+    for(const url of SHEET_URLS){
+      try{
+        const res = await fetch(bust(url), {cache:'no-store'});
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        if(/^\s*<(!doctype|html)/i.test(text)) throw new Error('Data is not accessible. Share the sheet as "Anyone with the link - Viewer".');
+        if(!(silent && RAW.length && text === lastCsv)){ loadCSVText(text); lastCsv = text; }
+        const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        setBusy(false);
+        updateDataStatus('Data updated ' + t, true);
+        btn.classList.remove('loading'); btn.disabled = false;
+        loading = false;
+        return;
+      }catch(err){ lastErr = err; }
+    }
+    loading = false;
+    if(silent && RAW.length){
+      btn.classList.remove('loading'); btn.disabled = false;
+      updateDataStatus('Previous data', true);
+      return;
+    }
+    showLoadError((lastErr && lastErr.message) ? lastErr.message : 'Unknown error');
+  }
+
+  function ingest(rows){
+    const prev = ACTIVE;
+    RAW = rows; RAW_VER++;
+    ACTIVE = {};
+    FILTER_DIMS.forEach(d=>{
+      const avail = new Set(rows.map(r=>r[d.key]));
+      ACTIVE[d.key] = new Set(Array.from(prev[d.key] || []).filter(v=>avail.has(v)));
+    });
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    buildFilters();
+    renderAll();
+  }
+
+  function updateDataStatus(name, on){
+    document.getElementById('dataStatusText').textContent = on ? name : 'No data loaded';
+    document.getElementById('dataDot').className = on ? 'dot' : 'dot off';
+  }
+
+  /* ================= FILTERS ================= */
+  /*FILTER_START*/
+  let RAW_VER = 0, FSIG = '';
+  const FCACHE = new Map();
+  function filterSig(){
+    return RAW_VER + '#' + FILTER_DIMS.map(d=> Array.from(ACTIVE[d.key]).sort().join('\u0001')).join('\u0002');
+  }
+  function currentFilteredRaw(excludeKey){
+    const sig = filterSig();
+    if(sig !== FSIG){ FCACHE.clear(); FSIG = sig; }
+    const ck = excludeKey || '';
+    if(FCACHE.has(ck)) return FCACHE.get(ck);
+    const active = FILTER_DIMS.filter(d=> d.key!==excludeKey && ACTIVE[d.key].size>0);
+    const out = active.length ? RAW.filter(r=> active.every(d=> ACTIVE[d.key].has(r[d.key]))) : RAW;
+    FCACHE.set(ck, out);
+    return out;
+  }
+  function getFilteredData(){ return currentFilteredRaw(null); }
+  // If a selected value no longer exists under the other filters (e.g. Region R3 after picking Wing W1),
+  // drop it instead of letting it silently filter everything out.
+  let LAST_KEY = null;   // the filter the person touched last is never auto-removed
+  function pruneStaleSelections(){
+    for(let pass=0; pass<4; pass++){
+      const act = FILTER_DIMS.filter(d=> ACTIVE[d.key].size>0);
+      if(act.length < 2) return;
+      let changed = false;
+      act.forEach(d=>{
+        if(d.key === LAST_KEY) return;
+        const avail = new Set();
+        currentFilteredRaw(d.key).forEach(r=> avail.add(r[d.key]));
+        Array.from(ACTIVE[d.key]).forEach(v=>{ if(!avail.has(v)){ ACTIVE[d.key].delete(v); changed = true; } });
+      });
+      if(!changed) return;
+    }
+  }
+  /*FILTER_END*/
+
+  function buildFilters(){
+    const row = document.getElementById('filterRow');
+    row.innerHTML = '';
+    FILTER_DIMS.forEach(d=>{
+      row.appendChild(buildDropdown(d));
+    });
+    const spacer = document.createElement('div'); spacer.className='spacer';
+    row.appendChild(spacer);
+    const count = document.createElement('div'); count.className='fcount'; count.id='filterCount';
+    row.appendChild(count);
+    refreshFilterCount();
+  }
+
+  function buildDropdown(dim){
+    const wrap = document.createElement('div'); wrap.className='msel'; wrap.dataset.key = dim.key;
+    const btn = document.createElement('div'); btn.className='msel-btn';
+    btn.innerHTML = `<span class="lbltext">${dim.label}</span><svg viewBox="0 0 24 24" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    wrap.appendChild(btn);
+
+    const panel = document.createElement('div'); panel.className='msel-panel'; panel.style.display='none';
+    panel.innerHTML = `
+      <div class="msel-search"><input type="text" placeholder="Search ${dim.label.toLowerCase()}..."></div>
+      <div class="msel-list"></div>
+      <div class="msel-foot"><button class="clear-btn">Clear</button><button class="all-btn">Select all</button></div>
+    `;
+    wrap.appendChild(panel);
+
+    function options(){
+      const base = currentFilteredRaw(dim.key);
+      let vals = Array.from(new Set(base.map(r=>r[dim.key]).filter(v=>v!=='')));
+      if(dim.key==='month'){ vals.sort((a,b)=> monthIndex(a)-monthIndex(b)); }
+      else { vals.sort((a,b)=> String(a).localeCompare(String(b))); }
+      return vals;
+    }
+
+    function renderList(filterText){
+      const list = panel.querySelector('.msel-list');
+      const keepScroll = list.scrollTop;
+      list.innerHTML='';
+      const vals = options().filter(v=> !filterText || String(v).toLowerCase().includes(filterText.toLowerCase()));
+      if(!vals.length){
+        list.innerHTML = '<div style="padding:14px 6px;color:var(--muted-2);font-size:12px;">No options</div>';
+        return;
+      }
+      vals.forEach(v=>{
+        const opt = document.createElement('label'); opt.className='msel-opt';
+        const checked = ACTIVE[dim.key].has(v);
+        opt.innerHTML = `<input type="checkbox" ${checked?'checked':''}> <span>${v}</span>`;
+        opt.querySelector('input').addEventListener('change', (e)=>{
+          LAST_KEY = dim.key;
+          if(e.target.checked) ACTIVE[dim.key].add(v); else ACTIVE[dim.key].delete(v);
+          updateBtnState();
+          renderAll();
+        });
+        list.appendChild(opt);
+      });
+      list.scrollTop = keepScroll;
+    }
+
+    function updateBtnState(){
+      const n = ACTIVE[dim.key].size;
+      btn.classList.toggle('active', n>0);
+      const cntEl = btn.querySelector('.cnt');
+      if(n>0){
+        if(!cntEl){ btn.insertAdjacentHTML('beforeend', `<span class="cnt">${n}</span>`); }
+        else cntEl.textContent = n;
+      } else if(cntEl){ cntEl.remove(); }
+      refreshFilterCount();
+    }
+
+    btn.addEventListener('click', (e)=>{
+      const isOpen = panel.style.display==='flex';
+      document.querySelectorAll('.msel-panel').forEach(p=>p.style.display='none');
+      if(!isOpen){
+        panel.style.display='flex';
+        renderList('');
+        panel.querySelector('input[type=text]').focus();
+      }
+      e.stopPropagation();
+    });
+    panel.addEventListener('click', e=> e.stopPropagation());
+    panel.querySelector('input[type=text]').addEventListener('input', e=> renderList(e.target.value));
+    panel.querySelector('.clear-btn').addEventListener('click', ()=>{ LAST_KEY = dim.key; ACTIVE[dim.key].clear(); updateBtnState(); renderList(''); renderAll(); });
+    panel.querySelector('.all-btn').addEventListener('click', ()=>{ LAST_KEY = dim.key; options().forEach(v=>ACTIVE[dim.key].add(v)); updateBtnState(); renderList(''); renderAll(); });
+
+    wrap._refresh = ()=>{ updateBtnState(); if(panel.style.display==='flex') renderList(panel.querySelector('input[type=text]').value); };
+    updateBtnState();
+    return wrap;
+  }
+
+  document.addEventListener('click', ()=> document.querySelectorAll('.msel-panel').forEach(p=>p.style.display='none'));
+
+  function refreshFilterCount(){
+    const el = document.getElementById('filterCount');
+    if(!el) return;
+    const n = getFilteredData().length;
+    el.innerHTML = `<b>${n.toLocaleString()}</b> of <b>${RAW.length.toLocaleString()}</b> rows match`;
+  }
+
+  function refreshAllDropdowns(){
+    document.querySelectorAll('.msel').forEach(w=>{ if(w._refresh) w._refresh(); });
+  }
+
+  /* ================= AGGREGATIONS ================= */
+  function groupByPeriod(data){
+    const map = new Map();
+    data.forEach(r=>{
+      const key = r.year+'|'+r.month;
+      if(!map.has(key)) map.set(key, {year:r.year, month:r.month, nd:0, sales:0, value:0});
+      const o = map.get(key);
+      o.nd += r.nd; o.sales += r.volume; o.value += r.value;
+    });
+    const arr = Array.from(map.values()).map(o=>({
+      period: shortPeriod(o.year, o.month),
+      year:o.year, month:o.month,
+      nd:o.nd, sales:o.sales, value:o.value,
+      dropsize: o.nd>0 ? o.sales/o.nd : 0,
+      sortkey: parseInt(o.year||0)*100 + monthIndex(o.month)
+    }));
+    arr.sort((a,b)=> a.sortkey-b.sortkey);
+    return arr;
+  }
+
+  function groupBySku(data){
+    const map = new Map();
+    data.forEach(r=>{
+      const key = r.sku;
+      if(!key) return;
+      if(!map.has(key)) map.set(key, {sku:r.sku, brand:r.brand, category:r.category, nd:0, sales:0, value:0});
+      const o = map.get(key);
+      o.nd += r.nd; o.sales += r.volume; o.value += r.value;
+      if(!o.brand) o.brand = r.brand;
+      if(!o.category) o.category = r.category;
+    });
+    return Array.from(map.values()).map(o=>({...o, dropsize: o.nd>0 ? o.sales/o.nd : 0}));
+  }
+
+  // Groups rows by Wing, Wing+Region, or Wing+Region+Territory depending on `level`.
+  // Levels above the chosen one collapse into "All" so every row still has a consistent shape.
+  function groupByGeo(data, level){
+    const map = new Map();
+    data.forEach(r=>{
+      const wing = r.wing || '(Blank)';
+      const region = (level==='region' || level==='territory') ? (r.region || '(Blank)') : 'All';
+      const territory = (level==='territory') ? (r.territory || '(Blank)') : 'All';
+      const key = wing+'|||'+region+'|||'+territory;
+      if(!map.has(key)) map.set(key, {wing, region, territory, nd:0, sales:0, value:0});
+      const o = map.get(key);
+      o.nd += r.nd; o.sales += r.volume; o.value += r.value;
+    });
+    return Array.from(map.values()).map(o=>({...o, dropsize: o.nd>0 ? o.sales/o.nd : 0}));
+  }
+
+  function periodsAvailable(data){
+    const map = new Map();
+    data.forEach(r=>{
+      const key = r.year+'|'+r.month;
+      if(!map.has(key)) map.set(key, {year:r.year, month:r.month, sortkey: parseInt(r.year||0)*100 + monthIndex(r.month)});
+    });
+    return Array.from(map.values()).sort((a,b)=>a.sortkey-b.sortkey);
+  }
+
+  /* ================= RENDER: KPI ================= */
+  function renderKpis(data){
+    const totalSales = data.reduce((s,r)=>s+r.volume,0);
+    const totalND = data.reduce((s,r)=>s+r.nd,0);
+    const totalValue = data.reduce((s,r)=>s+r.value,0);
+    const dropSize = totalND>0 ? totalSales/totalND : 0;
+    const skuCount = new Set(data.map(r=>r.sku).filter(Boolean)).size;
+    const periods = periodsAvailable(data).length;
+
+    const kpis = [
+      {lbl:'Total Sales (Volume)', val: fmtNum(totalSales), sub:'Sum of Delivery Volume'},
+      {lbl:'Total Numeric Distribution', val: fmtNum(totalND), sub:'Distinct Count of Outlet'},
+      {lbl:'Overall Drop Size', val: fmtNum(dropSize,2), sub:'Sales ÷ ND'},
+      {lbl:'Active SKUs', val: fmtNum(skuCount), sub:'In current selection'},
+      {lbl:'Delivery Value', val: fmtNum(totalValue), sub:periods+' period(s) covered'},
+    ];
+    const grid = document.getElementById('kpiGrid');
+    grid.innerHTML = kpis.map(k=>`
+      <div class="kpi">
+        <div class="lbl">${k.lbl}</div>
+        <div class="val">${k.val}</div>
+        <div class="sub">${k.sub}</div>
+      </div>`).join('');
+  }
+
+  /*TREND_START*/
+  /* ================= TREND CHARTS (self-drawn SVG: redrawn from scratch on every filter / toggle) ================= */
+  const TREND_LAST = {};
+  function _drawTrendChart(hostId, rows, key, label, color, showLabels, animate){
+    TREND_LAST[hostId] = [hostId, rows, key, label, color, showLabels, false];
+    const host = document.getElementById(hostId);
+    if(!host) return;
+    host.classList.toggle('noanim', !animate);
+    if(!rows.length){ host.innerHTML = '<div class="svg-empty">No data matches the current filters</div>'; return; }
+    const W = Math.min(1800, Math.max(host.clientWidth || 1000, 560)), H = 380;
+    const m = {t:64, r:22, b:58, l:84};
+    const iw = W-m.l-m.r, ih = H-m.t-m.b;
+    const vals = rows.map(r=> Number(r[key]) || 0);
+    const max = Math.max(1, ...vals);
+    const rough = max/5, mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    const nrm = rough/mag, step = (nrm<=1 ? 1 : nrm<=2 ? 2 : nrm<=5 ? 5 : 10) * mag;
+    const top = Math.ceil(max/step - 1e-9) * step;
+    const y = v=> m.t + ih - (v/top)*ih;
+    const f1 = n=> Number(n).toFixed(1);
+    const band = iw/rows.length, bw = Math.max(6, Math.min(48, band*0.62));
+    const years = Array.from(new Set(rows.map(r=>r.year))).filter(Boolean).sort();
+    const pal = ['#0B3D91','#2F80ED','#00A3A3','#7C4DFF','#1B8A5A','#B9791A'];
+    const colOf = r=> years.length>1 ? pal[years.indexOf(r.year) % pal.length] : color;
+    const rot = band < 46;
+    let grid = '', bars = '', tags = '', hov = '';
+    for(let v=0; v<=top+step/1000; v+=step){
+      grid += `<line x1="${m.l}" x2="${W-m.r}" y1="${f1(y(v))}" y2="${f1(y(v))}" stroke="#E4EBF5" stroke-dasharray="4 4"/><text class="ax" x="${m.l-10}" y="${f1(y(v)+4)}" text-anchor="end">${fmtNum(v, step<1 ? 1 : 0)}</text>`;
+    }
+    const pts = [];
+    rows.forEach((r,i)=>{
+      const v = vals[i], cx = m.l + band*i + band/2, yy = y(v), h = Math.max(0, m.t+ih-yy), ty = H-m.b+18;
+      pts.push([cx, yy]);
+      bars += `<rect class="bar" x="${f1(cx-bw/2)}" y="${f1(yy)}" width="${f1(bw)}" height="${f1(h)}" rx="5" fill="${colOf(r)}" opacity=".92"/>`;
+      bars += rot
+        ? `<text class="ax" x="${f1(cx)}" y="${ty}" text-anchor="end" transform="rotate(-40 ${f1(cx)} ${ty})">${r.period}</text>`
+        : `<text class="ax" x="${f1(cx)}" y="${ty}" text-anchor="middle">${r.period}</text>`;
+      if(showLabels){
+        const t = fmtNum(v), w = t.length*6.8 + 12, ly = Math.max(yy-16, 12);
+        tags += `<rect x="${f1(cx-w/2)}" y="${f1(ly-9)}" width="${f1(w)}" height="17" rx="5" fill="#fff" fill-opacity=".95" stroke="#123A66" stroke-opacity=".2"/><text class="lbl" x="${f1(cx)}" y="${f1(ly+3.5)}" text-anchor="middle">${t}</text>`;
+      }
+      hov += `<rect x="${f1(m.l+band*i)}" y="${m.t}" width="${f1(band)}" height="${ih}" fill="transparent"><title>${r.period}&#10;${label}: ${fmtNum(v)}</title></rect>`;
+    });
+    const line = `<polyline fill="none" stroke="#F57C00" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(p=>f1(p[0])+','+f1(p[1])).join(' ')}"/>`
+      + pts.map(p=>`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="4.5" fill="#fff" stroke="#F57C00" stroke-width="2.5"/>`).join('');
+    let mark = '';
+    if(rows.length > 1){
+      let hi = 0, lo = 0;
+      vals.forEach((v,i)=>{ if(v>vals[hi]) hi=i; if(v<vals[lo]) lo=i; });
+      if(hi !== lo){
+        const off = showLabels ? 36 : 20;
+        [[hi,'🏆'],[lo,'⚠️']].forEach(([i,e])=>{
+          mark += `<text x="${f1(pts[i][0])}" y="${f1(Math.max(pts[i][1]-off, 16))}" text-anchor="middle" font-size="16">${e}</text>`;
+        });
+      }
+    }
+    const items = years.length>1 ? years.map((yr,i)=>({c:pal[i%pal.length], t:String(yr)})) : [{c:color, t:label}];
+    items.push({c:'#F57C00', t: years.length>1 ? 'Trend (All Years)' : 'Trend', line:true});
+    let lx = Math.max(m.l, W - m.r - items.reduce((a,it)=> a + 26 + it.t.length*6.4, 0)), legend = '';
+    items.forEach(it=>{
+      legend += it.line
+        ? `<line x1="${f1(lx)}" x2="${f1(lx+16)}" y1="20" y2="20" stroke="${it.c}" stroke-width="3" stroke-linecap="round"/>`
+        : `<rect x="${f1(lx)}" y="14" width="12" height="12" rx="3" fill="${it.c}"/>`;
+      legend += `<text class="ax" x="${f1(lx+22)}" y="24">${it.t}</text>`;
+      lx += 26 + it.t.length*6.4;
+    });
+    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${label}">${legend}${grid}<line x1="${m.l}" x2="${W-m.r}" y1="${f1(m.t+ih)}" y2="${f1(m.t+ih)}" stroke="#D5DEEB"/>${bars}${line}${tags}${mark}${hov}</svg>`;
+  }
+  function drawTrendChart(){
+    try{ _drawTrendChart.apply(null, arguments); }
+    catch(e){
+      console.error('Trend chart failed:', e);
+      const h = document.getElementById(arguments[0]);
+      if(h) h.innerHTML = '<div class="svg-empty">Chart could not be drawn: ' + (e && e.message ? e.message : e) + '</div>';
+    }
+  }
+  let _trendRz;
+  function redrawTrend(){ Object.keys(TREND_LAST).forEach(k=> safeRun('Trend chart', ()=> drawTrendChart.apply(null, TREND_LAST[k]))); }
+  window.addEventListener('resize', ()=>{ clearTimeout(_trendRz); _trendRz = setTimeout(redrawTrend, 150); });
+  document.querySelectorAll('.tab').forEach(t=> t.addEventListener('click', ()=> setTimeout(redrawTrend, 0)));
+  /*TREND_END*/
+  function renderTrendCharts(data, animate){
+    const rows = groupByPeriod(data);
+    safeRun('Sales chart', ()=> drawTrendChart('salesChart', rows, 'sales', 'Sales (Delivery Volume)', '#2F80ED', showSalesLabels, animate !== false));
+    safeRun('ND chart', ()=> drawTrendChart('ndChart', rows, 'nd', 'Numeric Distribution (ND)', '#00A3A3', showNdLabels, animate !== false));
+  }
+
+  /* ================= RENDER: TREND TAB ================= */
+  function renderTrend(data){
+    const rows = groupByPeriod(data);
+    document.getElementById('tabTrendN').textContent = rows.length;
+
+    // table (rendered first, independently of the chart, so it always shows even if charting fails)
+    let sorted = [...rows];
+    const st = sortState.trend;
+    sorted.sort((a,b)=>{
+      let av=a[st.key], bv=b[st.key];
+      if(st.key==='period'){ av=a.sortkey; bv=b.sortkey; }
+      if(typeof av==='string') return st.dir*String(av).localeCompare(String(bv));
+      return st.dir*(av-bv);
+    });
+    const tbody = document.getElementById('trendTableBody');
+    if(!sorted.length){
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-row">No data matches the current filters</td></tr>`;
+    } else {
+      tbody.innerHTML = sorted.map(r=>`
+        <tr>
+          <td>${r.period}</td>
+          <td class="num">${fmtNum(r.nd)}</td>
+          <td class="num">${fmtNum(r.sales)}</td>
+          <td class="num">${fmtNum(r.dropsize,2)}</td>
+          <td class="num">${fmtNum(r.value)}</td>
+        </tr>`).join('');
+    }
+    markActiveHeader('trendTable', st.key, st.dir);
+
+  }
+
+  /* ================= RENDER: OVERVIEW TAB ================= */
+  function renderOverview(data, searchTerm){
+    let rows = groupBySku(data);
+    document.getElementById('tabOverN').textContent = rows.length;
+    if(searchTerm){
+      const t = searchTerm.toLowerCase();
+      rows = rows.filter(r=> (r.sku||'').toLowerCase().includes(t) || (r.brand||'').toLowerCase().includes(t) || (r.category||'').toLowerCase().includes(t));
+    }
+    const st = sortState.overview;
+    rows.sort((a,b)=>{
+      let av=a[st.key], bv=b[st.key];
+      if(typeof av==='string') return st.dir*String(av).localeCompare(String(bv));
+      return st.dir*((av||0)-(bv||0));
+    });
+    const tbody = document.getElementById('overviewTableBody');
+    if(!rows.length){
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-row">No SKU matches the current filters</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map((r,i)=>`
+        <tr>
+          <td class="rank">${i+1}</td>
+          <td>${r.sku}</td>
+          <td>${r.brand||'—'}</td>
+          <td>${r.category||'—'}</td>
+          <td class="num">${fmtNum(r.nd)}</td>
+          <td class="num">${fmtNum(r.sales)}</td>
+          <td class="num">${fmtNum(r.dropsize,2)}</td>
+          <td class="num">${fmtNum(r.value)}</td>
+        </tr>`).join('');
+    }
+    markActiveHeader('overviewTable', st.key, st.dir);
+  }
+
+  /* ================= RENDER: GEOGRAPHY TAB (Wing / Region / Territory) ================= */
+  function renderGeo(data, searchTerm){
+    let rows = groupByGeo(data, geoLevel);
+    document.getElementById('tabGeoN').textContent = rows.length;
+    if(searchTerm){
+      const t = searchTerm.toLowerCase();
+      rows = rows.filter(r=> (r.wing||'').toLowerCase().includes(t) || (r.region||'').toLowerCase().includes(t) || (r.territory||'').toLowerCase().includes(t));
+    }
+    const st = sortState.geo;
+    rows.sort((a,b)=>{
+      let av=a[st.key], bv=b[st.key];
+      if(typeof av==='string') return st.dir*String(av).localeCompare(String(bv));
+      return st.dir*((av||0)-(bv||0));
+    });
+    const tbody = document.getElementById('geoTableBody');
+    if(!rows.length){
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-row">No data matches the current filters</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map((r,i)=>`
+        <tr>
+          <td class="rank">${i+1}</td>
+          <td>${r.wing}</td>
+          <td>${r.region}</td>
+          <td>${r.territory}</td>
+          <td class="num">${fmtNum(r.nd)}</td>
+          <td class="num">${fmtNum(r.sales)}</td>
+          <td class="num">${fmtNum(r.dropsize,2)}</td>
+          <td class="num">${fmtNum(r.value)}</td>
+        </tr>`).join('');
+    }
+    markActiveHeader('geoTable', st.key, st.dir);
+  }
+
+  let geoMomPeriodsCache = [];
+  function populateGeoMomSelectors(data){
+    const periods = periodsAvailable(data);
+    geoMomPeriodsCache = periods;
+    const baseSel = document.getElementById('geoMomBase');
+    const compSel = document.getElementById('geoMomCompare');
+    const optionsHtml = periods.map((p,i)=>`<option value="${i}">${shortPeriod(p.year, p.month)}</option>`).join('');
+    const prevBase = baseSel.value, prevComp = compSel.value;
+    baseSel.innerHTML = optionsHtml;
+    compSel.innerHTML = optionsHtml;
+    if(periods.length>=2){
+      baseSel.value = (prevBase && prevBase < periods.length) ? prevBase : periods.length-2;
+      compSel.value = (prevComp && prevComp < periods.length) ? prevComp : periods.length-1;
+    } else if(periods.length===1){
+      baseSel.value = 0; compSel.value = 0;
+    }
+  }
+
+  function renderGeoMom(data){
+    populateGeoMomSelectors(data);
+    const periods = geoMomPeriodsCache;
+    if(periods.length<1){
+      document.getElementById('geoMomTableBody').innerHTML = `<tr><td colspan="10" class="empty-row">Not enough period data to compare</td></tr>`;
+      document.getElementById('geoMomKpis').innerHTML='';
+      return;
+    }
+    const baseIdx = parseInt(document.getElementById('geoMomBase').value||0);
+    const compIdx = parseInt(document.getElementById('geoMomCompare').value|| (periods.length-1));
+    const baseP = periods[baseIdx], compP = periods[compIdx];
+
+    const baseData = data.filter(r=>r.year===baseP.year && r.month===baseP.month);
+    const compData = data.filter(r=>r.year===compP.year && r.month===compP.month);
+    const baseGeo = groupByGeo(baseData, geoLevel);
+    const compGeo = groupByGeo(compData, geoLevel);
+
+    const keyOf = r=> r.wing+'|||'+r.region+'|||'+r.territory;
+    const baseMap = new Map(baseGeo.map(r=>[keyOf(r),r]));
+    const compMap = new Map(compGeo.map(r=>[keyOf(r),r]));
+    const allKeys = new Set([...baseGeo.map(keyOf), ...compGeo.map(keyOf)]);
+
+    let rows = Array.from(allKeys).map(key=>{
+      const [wing, region, territory] = key.split('|||');
+      const b = baseMap.get(key) || {nd:0, sales:0, dropsize:0};
+      const c = compMap.get(key) || {nd:0, sales:0, dropsize:0};
+      const ndDelta = b.nd>0 ? ((c.nd-b.nd)/b.nd*100) : (c.nd>0 ? 100 : 0);
+      const salesDelta = b.sales>0 ? ((c.sales-b.sales)/b.sales*100) : (c.sales>0 ? 100 : 0);
+      const dsDelta = b.dropsize>0 ? ((c.dropsize-b.dropsize)/b.dropsize*100) : (c.dropsize>0 ? 100 : 0);
+      return {wing, region, territory, ndBase:b.nd, ndComp:c.nd, ndDelta, salesBase:b.sales, salesComp:c.sales, salesDelta, dsDelta};
+    });
+
+    const totalBaseSales = rows.reduce((s,r)=>s+r.salesBase,0);
+    const totalCompSales = rows.reduce((s,r)=>s+r.salesComp,0);
+    const totalBaseND = rows.reduce((s,r)=>s+r.ndBase,0);
+    const totalCompND = rows.reduce((s,r)=>s+r.ndComp,0);
+    const salesGrowth = totalBaseSales>0 ? (totalCompSales-totalBaseSales)/totalBaseSales*100 : 0;
+    const ndGrowth = totalBaseND>0 ? (totalCompND-totalBaseND)/totalBaseND*100 : 0;
+    const growing = rows.filter(r=>r.salesDelta>0.01).length;
+    const declining = rows.filter(r=>r.salesDelta<-0.01).length;
+    const levelLabel = geoLevel==='wing' ? 'Wings' : geoLevel==='region' ? 'Regions' : 'Territories';
+
+    document.getElementById('geoMomKpis').innerHTML = `
+      <div class="mom-kpi"><div class="lbl">Sales change (${shortPeriod(compP.year, compP.month)} vs ${shortPeriod(baseP.year, baseP.month)})</div><div class="val" style="color:${salesGrowth>=0?'var(--green)':'var(--red)'}">${fmtPct(salesGrowth)}</div></div>
+      <div class="mom-kpi"><div class="lbl">ND change (${shortPeriod(compP.year, compP.month)} vs ${shortPeriod(baseP.year, baseP.month)})</div><div class="val" style="color:${ndGrowth>=0?'var(--green)':'var(--red)'}">${fmtPct(ndGrowth)}</div></div>
+      <div class="mom-kpi"><div class="lbl">${levelLabel} growing in sales</div><div class="val" style="color:var(--green)">${growing}</div></div>
+      <div class="mom-kpi"><div class="lbl">${levelLabel} declining in sales</div><div class="val" style="color:var(--red)">${declining}</div></div>
+    `;
+
+    const st = sortState.geoMom;
+    rows.sort((a,b)=>{
+      let av=a[st.key], bv=b[st.key];
+      if(typeof av==='string') return st.dir*String(av).localeCompare(String(bv));
+      return st.dir*((av||0)-(bv||0));
+    });
+
+    function deltaChip(v){
+      if(v===undefined || !isFinite(v)) return `<span class="chip-delta flat">—</span>`;
+      const cls = v>0.05 ? 'up' : (v<-0.05 ? 'down' : 'flat');
+      const arrow = v>0.05 ? '▲' : (v<-0.05 ? '▼' : '•');
+      return `<span class="chip-delta ${cls}">${arrow} ${fmtPct(v)}</span>`;
+    }
+
+    const tbody = document.getElementById('geoMomTableBody');
+    if(!rows.length){
+      tbody.innerHTML = `<tr><td colspan="10" class="empty-row">No data for the selected periods</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map(r=>`
+        <tr>
+          <td>${r.wing}</td>
+          <td>${r.region}</td>
+          <td>${r.territory}</td>
+          <td class="num">${fmtNum(r.ndBase)}</td>
+          <td class="num">${fmtNum(r.ndComp)}</td>
+          <td class="num">${deltaChip(r.ndDelta)}</td>
+          <td class="num">${fmtNum(r.salesBase)}</td>
+          <td class="num">${fmtNum(r.salesComp)}</td>
+          <td class="num">${deltaChip(r.salesDelta)}</td>
+          <td class="num">${deltaChip(r.dsDelta)}</td>
+        </tr>`).join('');
+    }
+    markActiveHeader('geoMomTable', st.key, st.dir);
+  }
+
+  /* ================= RENDER: MOM TAB ================= */
+  let momPeriodsCache = [];
+  function populateMomSelectors(data){
+    const periods = periodsAvailable(data);
+    momPeriodsCache = periods;
+    const baseSel = document.getElementById('momBase');
+    const compSel = document.getElementById('momCompare');
+    const optionsHtml = periods.map((p,i)=>`<option value="${i}">${shortPeriod(p.year, p.month)}</option>`).join('');
+    const prevBase = baseSel.value, prevComp = compSel.value;
+    baseSel.innerHTML = optionsHtml;
+    compSel.innerHTML = optionsHtml;
+    if(periods.length>=2){
+      baseSel.value = (prevBase && prevBase < periods.length) ? prevBase : periods.length-2;
+      compSel.value = (prevComp && prevComp < periods.length) ? prevComp : periods.length-1;
+    } else if(periods.length===1){
+      baseSel.value = 0; compSel.value = 0;
+    }
+  }
+
+  function renderMom(data){
+    populateMomSelectors(data);
+    const periods = momPeriodsCache;
+    if(periods.length<1){
+      document.getElementById('momTableBody').innerHTML = `<tr><td colspan="8" class="empty-row">Not enough period data to compare</td></tr>`;
+      document.getElementById('momKpis').innerHTML='';
+      return;
+    }
+    const baseIdx = parseInt(document.getElementById('momBase').value||0);
+    const compIdx = parseInt(document.getElementById('momCompare').value|| (periods.length-1));
+    const baseP = periods[baseIdx], compP = periods[compIdx];
+
+    const baseData = data.filter(r=>r.year===baseP.year && r.month===baseP.month);
+    const compData = data.filter(r=>r.year===compP.year && r.month===compP.month);
+    const baseSku = groupBySku(baseData);
+    const compSku = groupBySku(compData);
+
+    const skuNames = new Set([...baseSku.map(r=>r.sku), ...compSku.map(r=>r.sku)]);
+    const baseMap = new Map(baseSku.map(r=>[r.sku,r]));
+    const compMap = new Map(compSku.map(r=>[r.sku,r]));
+
+    let rows = Array.from(skuNames).map(name=>{
+      const b = baseMap.get(name) || {nd:0, sales:0, dropsize:0};
+      const c = compMap.get(name) || {nd:0, sales:0, dropsize:0};
+      const ndDelta = b.nd>0 ? ((c.nd-b.nd)/b.nd*100) : (c.nd>0 ? 100 : 0);
+      const salesDelta = b.sales>0 ? ((c.sales-b.sales)/b.sales*100) : (c.sales>0 ? 100 : 0);
+      const dsDelta = b.dropsize>0 ? ((c.dropsize-b.dropsize)/b.dropsize*100) : (c.dropsize>0 ? 100 : 0);
+      return {sku:name, ndBase:b.nd, ndComp:c.nd, ndDelta, salesBase:b.sales, salesComp:c.sales, salesDelta, dsDelta};
+    });
+
+    // KPI summary
+    const totalBaseSales = rows.reduce((s,r)=>s+r.salesBase,0);
+    const totalCompSales = rows.reduce((s,r)=>s+r.salesComp,0);
+    const totalBaseND = rows.reduce((s,r)=>s+r.ndBase,0);
+    const totalCompND = rows.reduce((s,r)=>s+r.ndComp,0);
+    const salesGrowth = totalBaseSales>0 ? (totalCompSales-totalBaseSales)/totalBaseSales*100 : 0;
+    const ndGrowth = totalBaseND>0 ? (totalCompND-totalBaseND)/totalBaseND*100 : 0;
+    const growing = rows.filter(r=>r.salesDelta>0.01).length;
+    const declining = rows.filter(r=>r.salesDelta<-0.01).length;
+
+    document.getElementById('momKpis').innerHTML = `
+      <div class="mom-kpi"><div class="lbl">Sales change (${shortPeriod(compP.year, compP.month)} vs ${shortPeriod(baseP.year, baseP.month)})</div><div class="val" style="color:${salesGrowth>=0?'var(--green)':'var(--red)'}">${fmtPct(salesGrowth)}</div></div>
+      <div class="mom-kpi"><div class="lbl">ND change (${shortPeriod(compP.year, compP.month)} vs ${shortPeriod(baseP.year, baseP.month)})</div><div class="val" style="color:${ndGrowth>=0?'var(--green)':'var(--red)'}">${fmtPct(ndGrowth)}</div></div>
+      <div class="mom-kpi"><div class="lbl">SKUs growing in sales</div><div class="val" style="color:var(--green)">${growing}</div></div>
+      <div class="mom-kpi"><div class="lbl">SKUs declining in sales</div><div class="val" style="color:var(--red)">${declining}</div></div>
+    `;
+
+    const st = sortState.mom;
+    rows.sort((a,b)=>{
+      let av=a[st.key], bv=b[st.key];
+      if(typeof av==='string') return st.dir*String(av).localeCompare(String(bv));
+      return st.dir*((av||0)-(bv||0));
+    });
+
+    function deltaChip(v){
+      if(v===undefined || !isFinite(v)) return `<span class="chip-delta flat">—</span>`;
+      const cls = v>0.05 ? 'up' : (v<-0.05 ? 'down' : 'flat');
+      const arrow = v>0.05 ? '▲' : (v<-0.05 ? '▼' : '•');
+      return `<span class="chip-delta ${cls}">${arrow} ${fmtPct(v)}</span>`;
+    }
+
+    const tbody = document.getElementById('momTableBody');
+    if(!rows.length){
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-row">No SKU data for the selected periods</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map(r=>`
+        <tr>
+          <td>${r.sku}</td>
+          <td class="num">${fmtNum(r.ndBase)}</td>
+          <td class="num">${fmtNum(r.ndComp)}</td>
+          <td class="num">${deltaChip(r.ndDelta)}</td>
+          <td class="num">${fmtNum(r.salesBase)}</td>
+          <td class="num">${fmtNum(r.salesComp)}</td>
+          <td class="num">${deltaChip(r.salesDelta)}</td>
+          <td class="num">${deltaChip(r.dsDelta)}</td>
+        </tr>`).join('');
+    }
+    markActiveHeader('momTable', st.key, st.dir);
+  }
+
+  function markActiveHeader(tableId, key, dir){
+    const tbl = document.getElementById(tableId);
+    tbl.querySelectorAll('thead th').forEach(th=>{
+      th.classList.toggle('active', th.dataset.key===key);
+      const arrow = th.querySelector('.arrow');
+      if(arrow && th.dataset.key===key) arrow.innerHTML = dir===1 ? '&#9652;' : '&#9662;';
+    });
+  }
+
+  /* ================= MASTER RENDER ================= */
+  function safeRun(label, fn){
+    try { fn(); }
+    catch(err){
+      console.error(label + ' failed:', err);
+      showErrorBanner(label + ' hit an error: ' + (err && err.message ? err.message : err));
+    }
+  }
+  function showErrorBanner(msg){
+    let el = document.getElementById('appErrorBanner');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'appErrorBanner';
+      el.style.cssText = 'position:sticky;top:0;z-index:80;background:#FCEBE8;color:#C7402D;border:1px solid #F3C9C1;padding:10px 16px;border-radius:8px;font-size:12.5px;margin-bottom:14px;';
+      const dash = document.getElementById('dashboard');
+      dash.insertBefore(el, dash.firstChild);
+    }
+    el.textContent = '⚠️ ' + msg + ' — other sections of the dashboard are unaffected and still work.';
+    el.style.display = 'block';
+  }
+  let _renderTimer = 0, _renderToken = 0;
+  function renderAll(){
+    if(_renderTimer) return;
+    _renderTimer = setTimeout(()=>{ _renderTimer = 0; doRender(); }, 0);
+  }
+  function doRender(){
+    const token = ++_renderToken;
+    safeRun('Filter cleanup', pruneStaleSelections);
+    const data = getFilteredData();
+    safeRun('Filter count', refreshFilterCount);
+    safeRun('KPI summary', ()=> renderKpis(data));
+    safeRun('Charts', ()=> renderTrendCharts(data, true));
+    safeRun('Filter dropdowns', refreshAllDropdowns);
+    const steps = [
+      ['Month-wise trend table', ()=> renderTrend(data)],
+      ['All-SKU overview', ()=> renderOverview(data, document.getElementById('skuSearch') ? document.getElementById('skuSearch').value : '')],
+      ['Wing & Territory performance', ()=> renderGeo(data, document.getElementById('geoSearch') ? document.getElementById('geoSearch').value : '')],
+      ['Wing & Territory MoM comparison', ()=> renderGeoMom(data)],
+      ['Month-on-month comparison', ()=> renderMom(data)],
+      ['Row count footer', ()=> { document.getElementById('rowCountFoot').textContent = RAW.length.toLocaleString(); }]
+    ];
+    (function next(i){
+      if(token !== _renderToken || i >= steps.length) return;   // a newer filter change took over
+      safeRun(steps[i][0], steps[i][1]);
+      setTimeout(()=> next(i+1), 0);
+    })(0);
+  }
+
+  /* ================= EVENTS ================= */
+  document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
+  document.getElementById('retryBtn').addEventListener('click', loadFromSheet);
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    FILTER_DIMS.forEach(d=> ACTIVE[d.key].clear());
+    renderAll();
+  });
+
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.tabpane').forEach(p=>p.style.display='none');
+      document.getElementById('pane-'+tab.dataset.tab).style.display='block';
+    });
+  });
+
+  document.getElementById('skuSearch').addEventListener('input', ()=>{
+    renderOverview(getFilteredData(), document.getElementById('skuSearch').value);
+  });
+
+  document.getElementById('geoSearch').addEventListener('input', ()=>{
+    renderGeo(getFilteredData(), document.getElementById('geoSearch').value);
+  });
+
+  document.getElementById('geoLevelToggle').querySelectorAll('.seg-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      geoLevel = btn.dataset.level;
+      document.getElementById('geoLevelToggle').querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const data = getFilteredData();
+      renderGeo(data, document.getElementById('geoSearch').value);
+      renderGeoMom(data);
+    });
+  });
+
+  document.getElementById('geoMomBase').addEventListener('change', ()=> renderGeoMom(getFilteredData()));
+  document.getElementById('geoMomCompare').addEventListener('change', ()=> renderGeoMom(getFilteredData()));
+
+  document.getElementById('salesLabelsToggle').addEventListener('change', (e)=>{
+    showSalesLabels = e.target.checked;
+    renderTrendCharts(getFilteredData(), false);
+  });
+  document.getElementById('ndLabelsToggle').addEventListener('change', (e)=>{
+    showNdLabels = e.target.checked;
+    renderTrendCharts(getFilteredData(), false);
+  });
+
+  ['trendTable','overviewTable','momTable','geoTable','geoMomTable'].forEach(id=>{
+    document.getElementById(id).querySelectorAll('thead th[data-key]').forEach(th=>{
+      th.addEventListener('click', ()=>{
+        const map = {trendTable:'trend', overviewTable:'overview', momTable:'mom', geoTable:'geo', geoMomTable:'geoMom'};
+        const tabKey = map[id];
+        const st = sortState[tabKey];
+        if(st.key===th.dataset.key) st.dir *= -1; else { st.key = th.dataset.key; st.dir = 1; }
+        if(tabKey==='trend') renderTrend(getFilteredData());
+        if(tabKey==='overview') renderOverview(getFilteredData(), document.getElementById('skuSearch').value);
+        if(tabKey==='mom') renderMom(getFilteredData());
+        if(tabKey==='geo') renderGeo(getFilteredData(), document.getElementById('geoSearch').value);
+        if(tabKey==='geoMom') renderGeoMom(getFilteredData());
+      });
+    });
+  });
+
+  document.getElementById('momBase').addEventListener('change', ()=> renderMom(getFilteredData()));
+  document.getElementById('momCompare').addEventListener('change', ()=> renderMom(getFilteredData()));
+
+
+  /* ===== Material motion: ripple + KPI count-up ===== */
+  document.addEventListener('pointerdown', e=>{
+    const t = e.target.closest('.btn,.tab,.seg-btn,.msel-btn');
+    if(!t) return;
+    const r = t.getBoundingClientRect(), d = Math.max(r.width, r.height);
+    const el = document.createElement('span');
+    el.className = 'ripple';
+    el.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX-r.left-d/2}px;top:${e.clientY-r.top-d/2}px`;
+    t.appendChild(el); setTimeout(()=>el.remove(), 650);
+  });
+  function countUp(el){
+    const m = el.textContent.match(/-?[\d,]*\.?\d+/);
+    if(!m) return;
+    const target = parseFloat(m[0].replace(/,/g,'')); if(!isFinite(target)) return;
+    const dec = (m[0].split('.')[1]||'').length, useComma = m[0].includes(',');
+    const pre = el.textContent.slice(0, m.index), post = el.textContent.slice(m.index + m[0].length);
+    const t0 = performance.now(), dur = 500;
+    (function step(now){
+      const k = Math.min(1,(now-t0)/dur), v = target*(1-Math.pow(1-k,3));
+      let txt = v.toFixed(dec); if(useComma) txt = Number(txt).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+      el.textContent = pre + txt + post;
+      if(k<1) requestAnimationFrame(step);
+    })(t0);
+  }
+  const kpiHost = document.querySelector('.kpi-grid');
+  if(kpiHost && !matchMedia('(prefers-reduced-motion:reduce)').matches){
+    new MutationObserver(()=> kpiHost.querySelectorAll('.kpi .val').forEach(countUp)).observe(kpiHost,{childList:true});
+  }
+
+  // auto-load from Google Sheet on open, then keep in sync (every 5 min + when the tab is revisited)
+  loadFromSheet();
+  setInterval(()=>{ if(!document.hidden) loadFromSheet(true); }, 5*60*1000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && Date.now()-lastLoadAt > 60000) loadFromSheet(true); });
+
+})();
+</script>
+<div style="position:fixed;right:10px;bottom:6px;font:10px 'IBM Plex Mono',monospace;color:#8A9CB0;z-index:5;pointer-events:none">v5 · svg charts</div>
+</body>
+</html>
