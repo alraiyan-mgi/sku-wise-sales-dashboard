@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js\'><\/script>')"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js\'><\/script>')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js\'><\/script>')"></script>
 <style>
   :root{
     --navy:#081B33;
@@ -1064,12 +1065,29 @@ tbody tr:nth-child(even){background:#FAFCFF;}
   }
   function parseTabList(text){
     return String(text||'').split(/[,\n]+/).map(x=>x.trim()).filter(Boolean).map(x=>{
-      const g = /^gid\s*=\s*(\d+)$/i.exec(x);
-      return g ? {param:'gid='+g[1], label:'gid '+g[1]} : {param:'sheet='+encodeURIComponent(x), label:x};
+      let m = /^gid\s*=\s*(\d+)$/i.exec(x);
+      if(m) return {label:'gid '+m[1], gid:m[1]};
+      m = /^(.+?)\s*=\s*(?:gid\s*=\s*)?(\d+)$/i.exec(x);       // "C=123" -> tab C with gid 123
+      if(m) return {label:m[1].trim(), gid:m[2]};
+      m = /^(.+?)\s*=\s*(.+)$/.exec(x);                           // "C=Line C" -> tab C is really named "Line C"
+      if(m) return {label:m[1].trim(), sheetName:m[2].trim()};
+      return {label:x};
     });
   }
-  function sheetCsvUrl(param){
-    return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&headers=1' + (param ? '&' + param : '');
+  function sheetCsvUrl(param, headers){
+    return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv' + (headers ? '&headers=1' : '') + '&' + param;
+  }
+  // Every way we know to ask Google for one tab. The first variant that returns real, new data wins.
+  function tabVariants(tab){
+    const v = [];
+    if(tab.gid){ v.push({param:'gid='+tab.gid, h:1, desc:'gid='+tab.gid}, {param:'gid='+tab.gid, h:0, desc:'gid='+tab.gid+' (no header hint)'}); }
+    const N = tab.label;
+    const names = Array.from(new Set([...(tab.sheetName ? [tab.sheetName] : []), N, N.toLowerCase(), N.toUpperCase(), 'Line '+N, 'Line_'+N, 'Line-'+N, N+' ', ' '+N]));
+    names.forEach((n,i)=>{
+      v.push({param:'sheet='+encodeURIComponent(n), h:i===0?1:0, desc:'sheet name "'+n+'"'});
+      if(i===0) v.push({param:'sheet='+encodeURIComponent(n), h:0, desc:'sheet name "'+n+'" (no header hint)'});
+    });
+    return v;
   }
   function fetchWithTimeout(url, ms){
     const ctrl = ('AbortController' in window) ? new AbortController() : null;
@@ -1105,13 +1123,31 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     }
     return normalizeRows(parsed.data, tabLabel);
   }
-  async function fetchTab(param){
-    const res = await fetchWithTimeout(sheetCsvUrl(param), FETCH_TIMEOUT_MS);
+  async function fetchVariant(variant){
+    const res = await fetchWithTimeout(sheetCsvUrl(variant.param, variant.h), FETCH_TIMEOUT_MS);
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
-    if(/^\s*<(!doctype|html)/i.test(text)) throw new Error('Data is not accessible (check that sharing is "Anyone with the link").');
+    if(/^\s*<(!doctype|html)/i.test(text)) throw new Error('Google returned a web page instead of data (sheet not shared as "Anyone with the link", or tab name not found).');
     return text;
   }
+  const rowSig = rows => rows.length + '|' + JSON.stringify(rows[0]) + '|' + JSON.stringify(rows[rows.length-1]);
+  function pickSheet(names, label){
+    const L = String(label).trim().toLowerCase();
+    let hit = names.find(n=> n.trim().toLowerCase() === L);
+    if(hit) return hit;
+    const esc = L.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const re = new RegExp('(^|[^a-z0-9])' + esc + '([^a-z0-9]|$)', 'i');     // the letter as a standalone word, e.g. "Line C", "C Line", "SKU-C"
+    const cands = names.filter(n=> re.test(n)).sort((a,b)=> a.length-b.length);
+    return cands[0] || null;
+  }
+  function saveAlias(label, actual){
+    if(!actual || actual.trim().toLowerCase() === label.toLowerCase()) return;
+    const items = getSavedTabs().split(/[,\n]+/).map(x=>x.trim()).filter(Boolean)
+      .filter(x=> parseTabList(x)[0].label.toLowerCase() !== label.toLowerCase());
+    items.push(label + '=' + actual);
+    saveTabs(items.join(', '));
+  }
+  const sigOf = t => t.length + '|' + t.slice(0,1500) + '|' + t.slice(-500);
 
   function setBusy(on){}
   function showLoading(){
@@ -1144,60 +1180,111 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     }
   }
   let isLoading = false;
+  let lastDetails = [];
   async function loadFromSheet(){
     if(isLoading) return;
     isLoading = true;
     showLoading();
     const msgEl = document.getElementById('loadMsg');
     try{
-      const merged = [...parseTabList(DEFAULT_TABS.join(',')), ...parseTabList(getSavedTabs())];
-      const seenParam = new Set();
-      let tabs = merged.filter(t=>{ if(seenParam.has(t.param)) return false; seenParam.add(t.param); return true; });
-      let done = 0;
-      const setMsg = ()=>{ if(msgEl) msgEl.textContent = 'Loading all tabs… ' + done + '/' + tabs.length; };
+      // tabs to load: defaults (A, C) + anything saved with the "Sheet tabs" button (saved entry wins for the same label)
+      const byLabel = new Map();
+      [...DEFAULT_TABS.map(n=>({label:n})), ...parseTabList(getSavedTabs())].forEach(t=> byLabel.set(t.label.toLowerCase(), t));
+      const tabs = Array.from(byLabel.values());
+      const details = []; lastDetails = details;
+      const all = [], loaded = [], problems = [], counts = {}, seen = new Map(), seenRows = new Map();
+      let workbookNames = null;
+      let done = 0, firstErr = null;
+      const setMsg = ()=>{ if(msgEl) msgEl.textContent = 'Loading tabs… ' + done + '/' + tabs.length; };
       setMsg();
 
-      // all tabs are downloaded in parallel
-      const results = await Promise.all(tabs.map(async tab=>{
-        try{ const text = await fetchTab(tab.param); done++; setMsg(); return {tab, text}; }
-        catch(err){ done++; setMsg(); return {tab, error: err}; }
+      // Phase 1: first (normal) request for every tab, in parallel
+      const first = await Promise.all(tabs.map(async tab=>{
+        const v0 = tabVariants(tab)[0];
+        try{
+          const text = await fetchVariant(v0);
+          return {text, rows: parseTabCsv(text, tab.label), v:v0};
+        }catch(err){ if(!firstErr) firstErr = err; return {err, v:v0}; }
       }));
+      done = tabs.length; setMsg();
 
-      const all = [], loaded = [], failed = [], dupes = [], empty = [], counts = {}, seen = new Map();
-      let firstErr = null;
-      results.forEach(r=>{
-        const name = r.tab.label || '(first tab)';
-        if(r.error){ failed.push(name); if(!firstErr) firstErr = r.error; return; }
-        // Google returns the FIRST tab again when a tab name does not exist -> detect identical content
-        const sig = r.text.length + '|' + r.text.slice(0,1500) + '|' + r.text.slice(-500);
-        if(seen.has(sig)){ dupes.push(name); return; }
-        seen.set(sig, name);
-        const rows = parseTabCsv(r.text, r.tab.label);
-        if(!rows.length){ empty.push(name); return; }       // no usable rows in this tab
-        loaded.push(name); counts[name] = rows.length;
-        for(let i=0;i<rows.length;i++) all.push(rows[i]);
-      });
+      // Phase 2: in tab order. A tab is accepted only if it has rows and its data differs from every tab accepted before it.
+      // Otherwise the other variants (name spellings, gid) are tried one by one.
+      for(let i=0;i<tabs.length;i++){
+        const tab = tabs[i], name = tab.label, tried = [];
+        const variants = tabVariants(tab);
+        let accepted = null;
+        const judge = (res, v)=>{
+          if(res.err){ tried.push(v.desc + ': ' + (res.err.message || res.err)); return false; }
+          if(!res.rows.length){ tried.push(v.desc + ': no usable rows'); return false; }
+          const sig = sigOf(res.text);
+          if(seen.has(sig)){ tried.push(v.desc + ': same data as tab ' + seen.get(sig) + ' (name not found)'); return false; }
+          accepted = {res, v, sig}; return true;
+        };
+        if(!judge(first[i], variants[0])){
+          for(let k=1;k<variants.length && !accepted;k++){
+            msgEl && (msgEl.textContent = 'Trying tab ' + name + ' (' + k + '/' + (variants.length-1) + ')…');
+            try{
+              const text = await fetchVariant(variants[k]);
+              judge({text, rows: parseTabCsv(text, tab.label)}, variants[k]);
+            }catch(err){ judge({err}, variants[k]); if(!firstErr) firstErr = err; }
+          }
+        }
+        if(!accepted){
+          problems.push(name);
+          details.push(name + ': NOT LOADED\n   ' + tried.slice(0,8).join('\n   '));
+          continue;
+        }
+        seen.set(accepted.sig, name); seenRows.set(rowSig(accepted.res.rows), name);
+        loaded.push(name); counts[name] = accepted.res.rows.length;
+        details.push(name + ': loaded ' + accepted.res.rows.length.toLocaleString() + ' rows via ' + accepted.v.desc);
+        for(let j=0;j<accepted.res.rows.length;j++) all.push(accepted.res.rows[j]);
+      }
 
-      if(empty.length) console.warn('Tabs with no usable rows:', empty.join(', '));
+
+      // Phase 3: any tab still missing -> download the whole workbook once, read the real tab names, and pick the tab from it.
+      if(problems.length && typeof XLSX !== 'undefined'){
+        if(msgEl) msgEl.textContent = 'Reading the full workbook to find tabs ' + problems.join(', ') + '…';
+        try{
+          const res = await fetchWithTimeout('https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export?format=xlsx', 180000);
+          if(!res.ok) throw new Error('HTTP ' + res.status);
+          const wb = XLSX.read(await res.arrayBuffer(), {type:'array'});
+          workbookNames = wb.SheetNames.slice();
+          for(const name of problems.slice()){
+            const actual = pickSheet(wb.SheetNames, name);
+            if(!actual){ continue; }
+            const rows = normalizeRows(XLSX.utils.sheet_to_json(wb.Sheets[actual], {defval:'', raw:true}), name);
+            if(!rows.length){ details.push(name + ': tab "' + actual + '" found but has no usable rows (check the column headings)'); continue; }
+            const rs = rowSig(rows);
+            if(seenRows.has(rs)){ details.push(name + ': tab "' + actual + '" has the same data as tab ' + seenRows.get(rs)); continue; }
+            seenRows.set(rs, name);
+            problems.splice(problems.indexOf(name), 1);
+            loaded.push(name); counts[name] = rows.length;
+            details.push(name + ': loaded ' + rows.length.toLocaleString() + ' rows from workbook tab "' + actual + '"');
+            for(let j=0;j<rows.length;j++) all.push(rows[j]);
+            saveAlias(name, actual);      // next time the tab is fetched directly by its real name
+          }
+        }catch(err){
+          details.push('Workbook download failed: ' + (err && err.message ? err.message : err));
+        }
+        if(workbookNames) details.push('Tabs found in your Google Sheet: ' + workbookNames.join(' | '));
+      }
+
       if(!all.length) throw (firstErr || new Error('No data rows were found.'));
-      if(failed.length) console.warn('Tabs that failed to load:', failed.join(', '));
-      if(dupes.length) console.warn('Tabs skipped (not found / same data as another tab):', dupes.join(', '));
+      problems.forEach(n=> console.warn('Tab not loaded:', n));
 
       ingest(all);
       const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       setBusy(false);
-      let label = 'Updated ' + t + ' · ' + loaded.length + ' tab(s) · ' + all.length.toLocaleString() + ' rows';
-      if(failed.length) label += ' · ⚠ failed: ' + failed.join(', ');
-      if(dupes.length) label += ' · ⚠ not found: ' + dupes.join(', ');
-      if(empty.length) label += ' · ⚠ no data: ' + empty.join(', ');
+      let label = 'Updated ' + t + ' · ' + loaded.map(n=> n + ' ' + counts[n].toLocaleString()).join(' · ') + ' rows';
+      if(problems.length) label += ' · ⚠ NOT loaded: ' + problems.join(', ') + ' (click for details)';
       updateDataStatus(label, true);
       const pill = document.getElementById('dataStatus');
-      if(pill) pill.title = 'Loaded: ' + loaded.map(n=> n + ' (' + (counts[n]||0).toLocaleString() + ' rows)').join(', ') + (empty.length ? '\nNo usable rows (check column headings): ' + empty.join(', ') : '') + (failed.length ? '\nFailed: ' + failed.join(', ') : '') +
-        (dupes.length ? '\nNot found (Google returned the first tab again): ' + dupes.join(', ') + '\nUse the "Sheet tabs" button to fix the tab names.' : '') +
-        (loaded.length===1 && !getSavedTabs() ? '\nOnly the first tab is loaded. Click "Sheet tabs" to add the other tabs.' : '');
-      if(failed.length || dupes.length || empty.length) document.getElementById('dataDot').className = 'dot off';
+      if(pill){ pill.title = 'Click for tab details'; pill.style.cursor = 'pointer'; }
+      document.getElementById('dataDot').className = problems.length ? 'dot off' : 'dot';
       document.getElementById('refreshBtn').classList.remove('loading');
       document.getElementById('refreshBtn').disabled = false;
+      if(problems.length && !window.__tabAlertShown){ window.__tabAlertShown = true; alert('Tab load report:\n\n' + details.join('\n\n') + '\n\nFix: click "Sheet tabs" and enter e.g.  A, C=123  (123 = number after #gid= in the address bar when you open that tab).'); }
     }catch(err){
       showLoadError((err && err.message) ? err.message : 'Unknown error');
     }finally{
@@ -1870,8 +1957,9 @@ tbody tr:nth-child(even){background:#FAFCFF;}
 
   /* ================= EVENTS ================= */
   document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
+  document.getElementById('dataStatus').addEventListener('click', ()=>{ if(lastDetails.length) alert('Tab load report:\n\n' + lastDetails.join('\n\n')); });
   document.getElementById('tabsBtn').addEventListener('click', ()=>{
-    const v = prompt('Google Sheet-er tab-er naam likhun (comma diye alada kore).\nNaam na jante gid=123 likhte paren (tab-e click korle URL-er #gid= er por-er number).\n\nJemon:  Line B, Line C, gid=456', getSavedTabs());
+    const v = prompt('Extra tab / gid override (comma diye alada kore). A ar C default-e load hoy.\nJemon:  C=123   (123 = oi tab-e click korle URL-er #gid= er por-er number)\nba notun tab:  D, E=456', getSavedTabs());
     if(v === null) return;
     saveTabs(v);
     loadFromSheet();
