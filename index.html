@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js\'><\/script>')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js\'><\/script>')"></script>
 <style>
   :root{
     --navy:#081B33;
@@ -500,16 +501,6 @@ tbody tr:nth-child(even){background:#FAFCFF;}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(87,214,141,.6)}70%{box-shadow:0 0 0 8px rgba(87,214,141,0)}100%{box-shadow:0 0 0 0 rgba(87,214,141,0)}}
 @keyframes floaty{0%,100%{transform:translate(0,0)}50%{transform:translate(24px,18px)}}
 @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;}}
-.svgchart{width:100%; overflow-x:auto; min-height:200px;}
-.svgchart svg{display:block; max-width:none;}
-.svgchart .ax{font:11px 'IBM Plex Mono',ui-monospace,monospace; fill:#5C7086;}
-.svgchart .lbl{font:700 10.5px 'IBM Plex Mono',ui-monospace,monospace; fill:#0F2A4A;}
-.svgchart .bar{transform-box:fill-box; transform-origin:50% 100%; animation:barGrow .45s ease-out both;}
-.svg-empty{padding:70px 10px; text-align:center; color:#5C7086; font-size:13px;}
-@keyframes barGrow{from{transform:scaleY(0)}to{transform:none}}
-.svgchart.noanim .bar{animation:none;}
-tbody tr{animation:none !important;}
-.kpi,.mom-kpi{animation:none !important;}
 </style>
 </head>
 <body>
@@ -522,7 +513,7 @@ tbody tr{animation:none !important;}
       </div>
       <div>
         <h1>SKU wise ND & Sales Dashboard</h1>
-        <div class="subtitle">Month-on-month trend, drop size and distribution performance across the SKU portfolio</div>
+        <div class="subtitle">Month-on-month trend, drop size and distribution performance across the SKU portfolio &mdash; all Lines combined</div>
       </div>
     </div>
     <div class="top-actions">
@@ -591,7 +582,7 @@ tbody tr{animation:none !important;}
             Show data labels
           </label>
         </div>
-        <div id="salesChart" class="svgchart"></div>
+        <canvas id="salesChart" height="90"></canvas>
         <div id="chartFallback" style="display:none; padding:26px 4px; color:var(--muted); font-size:12.5px; line-height:1.7;"></div>
       </div>
 
@@ -607,7 +598,7 @@ tbody tr{animation:none !important;}
             Show data labels
           </label>
         </div>
-        <div id="ndChart" class="svgchart"></div>
+        <canvas id="ndChart" height="90"></canvas>
         <div id="ndChartFallback" style="display:none; padding:26px 4px; color:var(--muted); font-size:12.5px; line-height:1.7;"></div>
       </div>
 
@@ -876,34 +867,15 @@ tbody tr{animation:none !important;}
     {solid:'#1B8A5A', soft:'rgba(27,138,90,0.90)'},
     {solid:'#B9791A', soft:'rgba(185,121,26,0.90)'},
   ]
-  function replaceCanvas(old){
-    const c = document.createElement('canvas');
-    c.id = old.id; c.setAttribute('height','90'); c.style.display = 'block';
-    old.parentNode.replaceChild(c, old);
-    return c;
-  }
-  // Data-label / best-worst markers are overlays: if one ever errors, skip it but never blank the chart.
-  function safePlugin(p){
-    const f = p.afterDatasetsDraw;
-    p.afterDatasetsDraw = function(chart){
-      try{ f.call(p, chart); }catch(e){ console.warn('Chart overlay skipped:', e); }
-    };
-    return p;
-  }
   // Builds one bar-chart dataset per year (each in its own colour) so 2025 vs 2026 (etc.)
   // data is instantly distinguishable. Falls back to a single gradient-filled dataset
   // when the current selection only spans one year.
   function buildYearBarDatasets(ctx, rows, valueKey, singleLabel, singleGradientStops){
     const years = Array.from(new Set(rows.map(r=>r.year))).filter(Boolean).sort();
     if(years.length<=1){
-      const gradient = (c)=>{
-        const a = c.chart.chartArea;
-        if(!a) return singleGradientStops[0];
-        const g = c.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom);
-        g.addColorStop(0, singleGradientStops[0]);
-        g.addColorStop(1, singleGradientStops[1]);
-        return g;
-      };
+      const gradient = ctx.createLinearGradient(0,0,0,320);
+      gradient.addColorStop(0, singleGradientStops[0]);
+      gradient.addColorStop(1, singleGradientStops[1]);
       return {
         datasets: [{
           type:'bar', label: singleLabel, data: rows.map(r=>r[valueKey]),
@@ -1030,11 +1002,12 @@ tbody tr{animation:none !important;}
   }
 
   /* ================= DATA INGEST ================= */
-  function normalizeRows(rows){
+  function normalizeRows(rows, tabName){
     if(!rows.length) return [];
     const headers = Object.keys(rows[0]);
+    const exactHeader = (name)=> headers.find(h=> String(h).toLowerCase().replace(/[^a-z0-9]/g,'') === name) || null;
     const map = {
-      line: headers.find(h=>String(h).replace(/^\ufeff/,'').trim().toLowerCase()==='line') || null,
+      line: exactHeader('line'),
       year: findHeader(headers, ['year']),
       month: findHeader(headers, ['month']),
       wing: findHeader(headers, ['wing']),
@@ -1048,36 +1021,63 @@ tbody tr{animation:none !important;}
       volume: findHeader(headers, ['deliveryvolume','volume']),
       value: findHeader(headers, ['deliveryvalue','value']),
     };
-    return rows.map(r=>({
-      line: map.line ? String(r[map.line]).trim() : '',
-      year: map.year ? String(r[map.year]).trim() : '',
-      month: map.month ? String(r[map.month]).trim() : '',
-      wing: map.wing ? String(r[map.wing]).trim() : '',
-      region: map.region ? String(r[map.region]).trim() : '',
-      territory: map.territory ? String(r[map.territory]).trim() : '',
-      category: map.category ? String(r[map.category]).trim() : '',
-      brand: map.brand ? String(r[map.brand]).trim() : '',
-      material: map.material ? String(r[map.material]).trim() : '',
-      sku: map.sku ? String(r[map.sku]).trim() : '',
-      nd: map.nd ? cleanNum(r[map.nd]) : 0,
-      volume: map.volume ? cleanNum(r[map.volume]) : 0,
-      value: map.value ? cleanNum(r[map.value]) : 0,
-    })).filter(r=> r.sku || r.month);
+    const str = (r,k)=> map[k] ? String(r[map[k]] == null ? '' : r[map[k]]).trim() : '';
+    const out = [];
+    for(let i=0;i<rows.length;i++){
+      const r = rows[i];
+      const row = {
+        line: str(r,'line') || tabName || '',   // falls back to the tab name if the Line column is blank
+        year: str(r,'year').replace(/,/g,''),
+        month: str(r,'month'),
+        wing: str(r,'wing'),
+        region: str(r,'region'),
+        territory: str(r,'territory'),
+        category: str(r,'category'),
+        brand: str(r,'brand'),
+        material: str(r,'material'),
+        sku: str(r,'sku'),
+        nd: map.nd ? cleanNum(r[map.nd]) : 0,
+        volume: map.volume ? cleanNum(r[map.volume]) : 0,
+        value: map.value ? cleanNum(r[map.value]) : 0,
+      };
+      if(row.sku || row.month) out.push(row);
+    }
+    return out;
   }
 
   /* ================= GOOGLE SHEET LOADER ================= */
   const SHEET_ID = '1RpdFtfN1yH6iGLAowJqbA6WWZtB5jNqH4EXjflRZFKY';
-  const SHEET_GID = '';   // optional: put a tab's gid here to load a specific tab (blank = first tab)
-  const SHEET_URLS = [
-    'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv' + (SHEET_GID ? '&gid=' + SHEET_GID : ''),
-    'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export?format=csv' + (SHEET_GID ? '&gid=' + SHEET_GID : '')
-  ];
+  // Every tab (= every Line) of the workbook is loaded and merged into one dataset.
+  // Tabs are requested by NAME through the gviz endpoint, so no gid is needed.
+  // The list below is the safe fallback; the loader also tries to auto-discover tabs
+  // so a newly added tab is picked up without editing this file.
+  const SHEET_TABS_FALLBACK = ['A','B','C','D','F','G','U'];
+  const FETCH_TIMEOUT_MS = 60000;
 
-  function loadCSVText(text){
-    const parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
-    const rows = normalizeRows(parsed.data);
-    if(!rows.length) throw new Error('No data rows were found.');
-    ingest(rows);
+  function sheetCsvUrl(tab){
+    return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab);
+  }
+  function fetchWithTimeout(url, ms){
+    const ctrl = ('AbortController' in window) ? new AbortController() : null;
+    const t = ctrl ? setTimeout(()=> ctrl.abort(), ms) : null;
+    return fetch(url, {cache:'no-store', signal: ctrl ? ctrl.signal : undefined}).finally(()=>{ if(t) clearTimeout(t); });
+  }
+  async function discoverTabs(){
+    try{
+      const res = await fetchWithTimeout('https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/htmlview', 6000);
+      if(!res.ok) return [];
+      const html = await res.text();
+      const names = []; const re = /<li[^>]*id="sheet-button-\d+"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/g; let m;
+      while((m = re.exec(html))) names.push(m[1].replace(/&amp;/g,'&').trim());
+      return names.filter(Boolean);
+    }catch(e){ return []; }   // blocked by the browser (CORS) -> fall back to the fixed list
+  }
+  async function fetchTab(tab){
+    const res = await fetchWithTimeout(sheetCsvUrl(tab), FETCH_TIMEOUT_MS);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    if(/^\s*<(!doctype|html)/i.test(text)) throw new Error('Data is not accessible (check that sharing is "Anyone with the link").');
+    return text;
   }
 
   function setBusy(on){}
@@ -1110,47 +1110,64 @@ tbody tr{animation:none !important;}
       updateDataStatus('Previous data', true);
     }
   }
-  let loading = false, lastCsv = '', lastLoadAt = 0;
-  async function loadFromSheet(silent){
-    if(loading) return;
-    silent = (silent === true);
-    loading = true; lastLoadAt = Date.now();
-    if(!silent) showLoading();
-    const bust = (u)=> u + (u.includes('?') ? '&' : '?') + '_=' + Date.now();
-    const btn = document.getElementById('refreshBtn');
-    let lastErr = null;
-    for(const url of SHEET_URLS){
-      try{
-        const res = await fetch(bust(url), {cache:'no-store'});
-        if(!res.ok) throw new Error('HTTP ' + res.status);
-        const text = await res.text();
-        if(/^\s*<(!doctype|html)/i.test(text)) throw new Error('Data is not accessible. Share the sheet as "Anyone with the link - Viewer".');
-        if(!(silent && RAW.length && text === lastCsv)){ loadCSVText(text); lastCsv = text; }
-        const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-        setBusy(false);
-        updateDataStatus('Data updated ' + t, true);
-        btn.classList.remove('loading'); btn.disabled = false;
-        loading = false;
-        return;
-      }catch(err){ lastErr = err; }
+  let isLoading = false;
+  async function loadFromSheet(){
+    if(isLoading) return;
+    isLoading = true;
+    showLoading();
+    const msgEl = document.getElementById('loadMsg');
+    try{
+      const discovered = await discoverTabs();
+      const tabs = Array.from(new Set([...SHEET_TABS_FALLBACK, ...discovered]));
+      let done = 0;
+      const setMsg = ()=>{ if(msgEl) msgEl.textContent = 'Loading all tabs… ' + done + '/' + tabs.length; };
+      setMsg();
+
+      // all tabs are downloaded in parallel
+      const results = await Promise.all(tabs.map(async tab=>{
+        try{ const text = await fetchTab(tab); done++; setMsg(); return {tab, text}; }
+        catch(err){ done++; setMsg(); return {tab, error: err}; }
+      }));
+
+      const all = [], loaded = [], failed = [], seen = new Set();
+      let firstErr = null;
+      results.forEach(r=>{
+        if(r.error){ failed.push(r.tab); if(!firstErr) firstErr = r.error; return; }
+        // an unknown tab name can make Google return the first tab again -> skip exact duplicates
+        const sig = r.text.length + '|' + r.text.slice(0,1500) + '|' + r.text.slice(-500);
+        if(seen.has(sig)) return;
+        seen.add(sig);
+        const parsed = Papa.parse(r.text, {header:true, skipEmptyLines:true});
+        const rows = normalizeRows(parsed.data, r.tab);
+        if(!rows.length) return;       // empty / helper tab
+        loaded.push(r.tab);
+        for(let i=0;i<rows.length;i++) all.push(rows[i]);
+      });
+
+      if(!all.length) throw (firstErr || new Error('No data rows were found.'));
+      if(failed.length) console.warn('Tabs that failed to load:', failed.join(', '));
+
+      ingest(all);
+      const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      setBusy(false);
+      let label = 'Updated ' + t + ' · ' + loaded.length + ' tabs · ' + all.length.toLocaleString() + ' rows';
+      if(failed.length) label += ' · ⚠ failed: ' + failed.join(', ');
+      updateDataStatus(label, true);
+      const pill = document.getElementById('dataStatus');
+      if(pill) pill.title = 'Loaded Lines: ' + loaded.join(', ') + (failed.length ? '\nFailed: ' + failed.join(', ') : '');
+      if(failed.length) document.getElementById('dataDot').className = 'dot off';
+      document.getElementById('refreshBtn').classList.remove('loading');
+      document.getElementById('refreshBtn').disabled = false;
+    }catch(err){
+      showLoadError((err && err.message) ? err.message : 'Unknown error');
+    }finally{
+      isLoading = false;
     }
-    loading = false;
-    if(silent && RAW.length){
-      btn.classList.remove('loading'); btn.disabled = false;
-      updateDataStatus('Previous data', true);
-      return;
-    }
-    showLoadError((lastErr && lastErr.message) ? lastErr.message : 'Unknown error');
   }
 
   function ingest(rows){
-    const prev = ACTIVE;
-    RAW = rows; RAW_VER++;
-    ACTIVE = {};
-    FILTER_DIMS.forEach(d=>{
-      const avail = new Set(rows.map(r=>r[d.key]));
-      ACTIVE[d.key] = new Set(Array.from(prev[d.key] || []).filter(v=>avail.has(v)));
-    });
+    RAW = rows; dataVersion++;
+    FILTER_DIMS.forEach(d=> ACTIVE[d.key] = new Set());
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
     buildFilters();
@@ -1163,41 +1180,23 @@ tbody tr{animation:none !important;}
   }
 
   /* ================= FILTERS ================= */
-  /*FILTER_START*/
-  let RAW_VER = 0, FSIG = '';
-  const FCACHE = new Map();
-  function filterSig(){
-    return RAW_VER + '#' + FILTER_DIMS.map(d=> Array.from(ACTIVE[d.key]).sort().join('\u0001')).join('\u0002');
-  }
+  let dataVersion = 0;
+  let _fc = {sig:null, data:null};
   function currentFilteredRaw(excludeKey){
-    const sig = filterSig();
-    if(sig !== FSIG){ FCACHE.clear(); FSIG = sig; }
-    const ck = excludeKey || '';
-    if(FCACHE.has(ck)) return FCACHE.get(ck);
-    const active = FILTER_DIMS.filter(d=> d.key!==excludeKey && ACTIVE[d.key].size>0);
-    const out = active.length ? RAW.filter(r=> active.every(d=> ACTIVE[d.key].has(r[d.key]))) : RAW;
-    FCACHE.set(ck, out);
-    return out;
+    const act = FILTER_DIMS.filter(d=> d.key!==excludeKey && ACTIVE[d.key].size>0);
+    if(!act.length) return RAW;
+    return RAW.filter(r=>{
+      for(let i=0;i<act.length;i++){ if(!ACTIVE[act[i].key].has(r[act[i].key])) return false; }
+      return true;
+    });
   }
-  function getFilteredData(){ return currentFilteredRaw(null); }
-  // If a selected value no longer exists under the other filters (e.g. Region R3 after picking Wing W1),
-  // drop it instead of letting it silently filter everything out.
-  let LAST_KEY = null;   // the filter the person touched last is never auto-removed
-  function pruneStaleSelections(){
-    for(let pass=0; pass<4; pass++){
-      const act = FILTER_DIMS.filter(d=> ACTIVE[d.key].size>0);
-      if(act.length < 2) return;
-      let changed = false;
-      act.forEach(d=>{
-        if(d.key === LAST_KEY) return;
-        const avail = new Set();
-        currentFilteredRaw(d.key).forEach(r=> avail.add(r[d.key]));
-        Array.from(ACTIVE[d.key]).forEach(v=>{ if(!avail.has(v)){ ACTIVE[d.key].delete(v); changed = true; } });
-      });
-      if(!changed) return;
-    }
+  // The same filtered rows are needed by every widget on each render; compute them once per filter state.
+  function getFilteredData(){
+    const sig = dataVersion + '#' + FILTER_DIMS.map(d=> Array.from(ACTIVE[d.key]).sort().join('\u0001')).join('\u0002');
+    if(_fc.sig === sig) return _fc.data;
+    _fc = {sig, data: currentFilteredRaw(null)};
+    return _fc.data;
   }
-  /*FILTER_END*/
 
   function buildFilters(){
     const row = document.getElementById('filterRow');
@@ -1236,7 +1235,6 @@ tbody tr{animation:none !important;}
 
     function renderList(filterText){
       const list = panel.querySelector('.msel-list');
-      const keepScroll = list.scrollTop;
       list.innerHTML='';
       const vals = options().filter(v=> !filterText || String(v).toLowerCase().includes(filterText.toLowerCase()));
       if(!vals.length){
@@ -1248,14 +1246,12 @@ tbody tr{animation:none !important;}
         const checked = ACTIVE[dim.key].has(v);
         opt.innerHTML = `<input type="checkbox" ${checked?'checked':''}> <span>${v}</span>`;
         opt.querySelector('input').addEventListener('change', (e)=>{
-          LAST_KEY = dim.key;
           if(e.target.checked) ACTIVE[dim.key].add(v); else ACTIVE[dim.key].delete(v);
           updateBtnState();
           renderAll();
         });
         list.appendChild(opt);
       });
-      list.scrollTop = keepScroll;
     }
 
     function updateBtnState(){
@@ -1281,8 +1277,8 @@ tbody tr{animation:none !important;}
     });
     panel.addEventListener('click', e=> e.stopPropagation());
     panel.querySelector('input[type=text]').addEventListener('input', e=> renderList(e.target.value));
-    panel.querySelector('.clear-btn').addEventListener('click', ()=>{ LAST_KEY = dim.key; ACTIVE[dim.key].clear(); updateBtnState(); renderList(''); renderAll(); });
-    panel.querySelector('.all-btn').addEventListener('click', ()=>{ LAST_KEY = dim.key; options().forEach(v=>ACTIVE[dim.key].add(v)); updateBtnState(); renderList(''); renderAll(); });
+    panel.querySelector('.clear-btn').addEventListener('click', ()=>{ ACTIVE[dim.key].clear(); updateBtnState(); renderList(''); renderAll(); });
+    panel.querySelector('.all-btn').addEventListener('click', ()=>{ options().forEach(v=>ACTIVE[dim.key].add(v)); updateBtnState(); renderList(''); renderAll(); });
 
     wrap._refresh = ()=>{ updateBtnState(); if(panel.style.display==='flex') renderList(panel.querySelector('input[type=text]').value); };
     updateBtnState();
@@ -1386,92 +1382,6 @@ tbody tr{animation:none !important;}
       </div>`).join('');
   }
 
-  /*TREND_START*/
-  /* ================= TREND CHARTS (self-drawn SVG: redrawn from scratch on every filter / toggle) ================= */
-  const TREND_LAST = {};
-  function _drawTrendChart(hostId, rows, key, label, color, showLabels, animate){
-    TREND_LAST[hostId] = [hostId, rows, key, label, color, showLabels, false];
-    const host = document.getElementById(hostId);
-    if(!host) return;
-    host.classList.toggle('noanim', !animate);
-    if(!rows.length){ host.innerHTML = '<div class="svg-empty">No data matches the current filters</div>'; return; }
-    const W = Math.min(1800, Math.max(host.clientWidth || 1000, 560)), H = 380;
-    const m = {t:64, r:22, b:58, l:84};
-    const iw = W-m.l-m.r, ih = H-m.t-m.b;
-    const vals = rows.map(r=> Number(r[key]) || 0);
-    const max = Math.max(1, ...vals);
-    const rough = max/5, mag = Math.pow(10, Math.floor(Math.log10(rough)));
-    const nrm = rough/mag, step = (nrm<=1 ? 1 : nrm<=2 ? 2 : nrm<=5 ? 5 : 10) * mag;
-    const top = Math.ceil(max/step - 1e-9) * step;
-    const y = v=> m.t + ih - (v/top)*ih;
-    const f1 = n=> Number(n).toFixed(1);
-    const band = iw/rows.length, bw = Math.max(6, Math.min(48, band*0.62));
-    const years = Array.from(new Set(rows.map(r=>r.year))).filter(Boolean).sort();
-    const pal = ['#0B3D91','#2F80ED','#00A3A3','#7C4DFF','#1B8A5A','#B9791A'];
-    const colOf = r=> years.length>1 ? pal[years.indexOf(r.year) % pal.length] : color;
-    const rot = band < 46;
-    let grid = '', bars = '', tags = '', hov = '';
-    for(let v=0; v<=top+step/1000; v+=step){
-      grid += `<line x1="${m.l}" x2="${W-m.r}" y1="${f1(y(v))}" y2="${f1(y(v))}" stroke="#E4EBF5" stroke-dasharray="4 4"/><text class="ax" x="${m.l-10}" y="${f1(y(v)+4)}" text-anchor="end">${fmtNum(v, step<1 ? 1 : 0)}</text>`;
-    }
-    const pts = [];
-    rows.forEach((r,i)=>{
-      const v = vals[i], cx = m.l + band*i + band/2, yy = y(v), h = Math.max(0, m.t+ih-yy), ty = H-m.b+18;
-      pts.push([cx, yy]);
-      bars += `<rect class="bar" x="${f1(cx-bw/2)}" y="${f1(yy)}" width="${f1(bw)}" height="${f1(h)}" rx="5" fill="${colOf(r)}" opacity=".92"/>`;
-      bars += rot
-        ? `<text class="ax" x="${f1(cx)}" y="${ty}" text-anchor="end" transform="rotate(-40 ${f1(cx)} ${ty})">${r.period}</text>`
-        : `<text class="ax" x="${f1(cx)}" y="${ty}" text-anchor="middle">${r.period}</text>`;
-      if(showLabels){
-        const t = fmtNum(v), w = t.length*6.8 + 12, ly = Math.max(yy-16, 12);
-        tags += `<rect x="${f1(cx-w/2)}" y="${f1(ly-9)}" width="${f1(w)}" height="17" rx="5" fill="#fff" fill-opacity=".95" stroke="#123A66" stroke-opacity=".2"/><text class="lbl" x="${f1(cx)}" y="${f1(ly+3.5)}" text-anchor="middle">${t}</text>`;
-      }
-      hov += `<rect x="${f1(m.l+band*i)}" y="${m.t}" width="${f1(band)}" height="${ih}" fill="transparent"><title>${r.period}&#10;${label}: ${fmtNum(v)}</title></rect>`;
-    });
-    const line = `<polyline fill="none" stroke="#F57C00" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(p=>f1(p[0])+','+f1(p[1])).join(' ')}"/>`
-      + pts.map(p=>`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="4.5" fill="#fff" stroke="#F57C00" stroke-width="2.5"/>`).join('');
-    let mark = '';
-    if(rows.length > 1){
-      let hi = 0, lo = 0;
-      vals.forEach((v,i)=>{ if(v>vals[hi]) hi=i; if(v<vals[lo]) lo=i; });
-      if(hi !== lo){
-        const off = showLabels ? 36 : 20;
-        [[hi,'🏆'],[lo,'⚠️']].forEach(([i,e])=>{
-          mark += `<text x="${f1(pts[i][0])}" y="${f1(Math.max(pts[i][1]-off, 16))}" text-anchor="middle" font-size="16">${e}</text>`;
-        });
-      }
-    }
-    const items = years.length>1 ? years.map((yr,i)=>({c:pal[i%pal.length], t:String(yr)})) : [{c:color, t:label}];
-    items.push({c:'#F57C00', t: years.length>1 ? 'Trend (All Years)' : 'Trend', line:true});
-    let lx = Math.max(m.l, W - m.r - items.reduce((a,it)=> a + 26 + it.t.length*6.4, 0)), legend = '';
-    items.forEach(it=>{
-      legend += it.line
-        ? `<line x1="${f1(lx)}" x2="${f1(lx+16)}" y1="20" y2="20" stroke="${it.c}" stroke-width="3" stroke-linecap="round"/>`
-        : `<rect x="${f1(lx)}" y="14" width="12" height="12" rx="3" fill="${it.c}"/>`;
-      legend += `<text class="ax" x="${f1(lx+22)}" y="24">${it.t}</text>`;
-      lx += 26 + it.t.length*6.4;
-    });
-    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${label}">${legend}${grid}<line x1="${m.l}" x2="${W-m.r}" y1="${f1(m.t+ih)}" y2="${f1(m.t+ih)}" stroke="#D5DEEB"/>${bars}${line}${tags}${mark}${hov}</svg>`;
-  }
-  function drawTrendChart(){
-    try{ _drawTrendChart.apply(null, arguments); }
-    catch(e){
-      console.error('Trend chart failed:', e);
-      const h = document.getElementById(arguments[0]);
-      if(h) h.innerHTML = '<div class="svg-empty">Chart could not be drawn: ' + (e && e.message ? e.message : e) + '</div>';
-    }
-  }
-  let _trendRz;
-  function redrawTrend(){ Object.keys(TREND_LAST).forEach(k=> safeRun('Trend chart', ()=> drawTrendChart.apply(null, TREND_LAST[k]))); }
-  window.addEventListener('resize', ()=>{ clearTimeout(_trendRz); _trendRz = setTimeout(redrawTrend, 150); });
-  document.querySelectorAll('.tab').forEach(t=> t.addEventListener('click', ()=> setTimeout(redrawTrend, 0)));
-  /*TREND_END*/
-  function renderTrendCharts(data, animate){
-    const rows = groupByPeriod(data);
-    safeRun('Sales chart', ()=> drawTrendChart('salesChart', rows, 'sales', 'Sales (Delivery Volume)', '#2F80ED', showSalesLabels, animate !== false));
-    safeRun('ND chart', ()=> drawTrendChart('ndChart', rows, 'nd', 'Numeric Distribution (ND)', '#00A3A3', showNdLabels, animate !== false));
-  }
-
   /* ================= RENDER: TREND TAB ================= */
   function renderTrend(data){
     const rows = groupByPeriod(data);
@@ -1501,6 +1411,112 @@ tbody tr{animation:none !important;}
     }
     markActiveHeader('trendTable', st.key, st.dir);
 
+    // chart (isolated in try/catch: if the charting library fails to load or errors,
+    // the table above and every other tab still render correctly)
+    const fallback = document.getElementById('chartFallback');
+    const canvas = document.getElementById('salesChart');
+    try {
+      if(typeof Chart === 'undefined'){
+        throw new Error('Chart library did not load (no internet access to the CDN, or it was blocked by your network/browser).');
+      }
+      canvas.style.display = 'block';
+      fallback.style.display = 'none';
+      const labels = rows.map(r=>r.period);
+      const values = rows.map(r=>r.sales);
+      const ctx = canvas.getContext('2d');
+      if(salesChart) salesChart.destroy();
+      const built = buildYearBarDatasets(ctx, rows, 'sales', 'Sales (Delivery Volume)', ['rgba(47,128,237,1)','rgba(11,61,145,0.85)']);
+      salesChart = new Chart(ctx, {
+        type:'bar',
+        data:{
+          labels,
+          datasets:[
+            ...built.datasets,
+            {
+              type:'line', label: built.multiYear ? 'Trend (All Years)' : 'Trend', data: values, borderColor:'#F57C00', borderWidth:3, borderCapStyle:'round',
+              pointBackgroundColor:'#fff', pointBorderColor:'#F57C00', pointBorderWidth:2.5, pointRadius:4.5, pointHoverRadius:7, tension:.4, fill:false, order:1,
+            }
+          ]
+        },
+        plugins:[ makeValueLabelsPlugin(()=>showSalesLabels), makeExtremesPlugin(()=>showSalesLabels) ],
+        options:{
+          responsive:true,
+          layout:{padding:{top:46,right:6}},
+          interaction:{mode:'index', intersect:false},
+          plugins:{
+            legend:{display:true, position:'top', align:'end', labels:{boxWidth:11, font:{family:"'Roboto'", size:11.5}, color:'#5C7086'}},
+            tooltip:{
+              backgroundColor:'#0F2A4A', padding:10, titleFont:{family:"'Roboto'", weight:'700'},
+              bodyFont:{family:"'Roboto Mono'"}, cornerRadius:8,
+              callbacks:{ label: (c)=> ' ' + c.dataset.label + ': ' + fmtNum(c.parsed.y) }
+            }
+          },
+          scales:{
+            x:{ grid:{display:false}, border:{color:'#D5DEEB'}, stacked: built.multiYear, ticks:{color:'#5C7086', font:{family:"'Roboto'", size:11.5}} },
+            y:{ grid:{color:'#E4EBF5', borderDash:[4,4]}, border:{display:false}, stacked: built.multiYear, ticks:{color:'#5C7086', font:{family:"'Roboto Mono'", size:11}, callback:(v)=>fmtNum(v)} }
+          }
+        }
+      });
+    } catch(chartErr){
+      console.error('Chart render failed:', chartErr);
+      canvas.style.display = 'none';
+      fallback.style.display = 'block';
+      fallback.innerHTML = '⚠️ Could not draw the chart (' + (chartErr && chartErr.message ? chartErr.message : 'unknown error') +
+        '). The table below still reflects your data correctly — try reloading the page or checking your internet connection to fix the chart.';
+    }
+
+    // ND (Numeric Distribution) chart — same style/behaviour as the sales chart above
+    const ndFallback = document.getElementById('ndChartFallback');
+    const ndCanvas = document.getElementById('ndChart');
+    try {
+      if(typeof Chart === 'undefined'){
+        throw new Error('Chart library did not load (no internet access to the CDN, or it was blocked by your network/browser).');
+      }
+      ndCanvas.style.display = 'block';
+      ndFallback.style.display = 'none';
+      const labels = rows.map(r=>r.period);
+      const ndValues = rows.map(r=>r.nd);
+      const ndCtx = ndCanvas.getContext('2d');
+      if(ndChart) ndChart.destroy();
+      const ndBuilt = buildYearBarDatasets(ndCtx, rows, 'nd', 'Numeric Distribution (ND)', ['rgba(0,184,169,1)','rgba(0,110,130,0.85)']);
+      ndChart = new Chart(ndCtx, {
+        type:'bar',
+        data:{
+          labels,
+          datasets:[
+            ...ndBuilt.datasets,
+            {
+              type:'line', label: ndBuilt.multiYear ? 'Trend (All Years)' : 'Trend', data: ndValues, borderColor:'#F57C00', borderWidth:3, borderCapStyle:'round',
+              pointBackgroundColor:'#fff', pointBorderColor:'#F57C00', pointBorderWidth:2.5, pointRadius:4.5, pointHoverRadius:7, tension:.4, fill:false, order:1,
+            }
+          ]
+        },
+        plugins:[ makeValueLabelsPlugin(()=>showNdLabels), makeExtremesPlugin(()=>showNdLabels) ],
+        options:{
+          responsive:true,
+          layout:{padding:{top:46,right:6}},
+          interaction:{mode:'index', intersect:false},
+          plugins:{
+            legend:{display:true, position:'top', align:'end', labels:{boxWidth:11, font:{family:"'Roboto'", size:11.5}, color:'#5C7086'}},
+            tooltip:{
+              backgroundColor:'#0F2A4A', padding:10, titleFont:{family:"'Roboto'", weight:'700'},
+              bodyFont:{family:"'Roboto Mono'"}, cornerRadius:8,
+              callbacks:{ label: (c)=> ' ' + c.dataset.label + ': ' + fmtNum(c.parsed.y) }
+            }
+          },
+          scales:{
+            x:{ grid:{display:false}, border:{color:'#D5DEEB'}, stacked: ndBuilt.multiYear, ticks:{color:'#5C7086', font:{family:"'Roboto'", size:11.5}} },
+            y:{ grid:{color:'#E4EBF5', borderDash:[4,4]}, border:{display:false}, stacked: ndBuilt.multiYear, ticks:{color:'#5C7086', font:{family:"'Roboto Mono'", size:11}, callback:(v)=>fmtNum(v)} }
+          }
+        }
+      });
+    } catch(ndChartErr){
+      console.error('ND chart render failed:', ndChartErr);
+      ndCanvas.style.display = 'none';
+      ndFallback.style.display = 'block';
+      ndFallback.innerHTML = '⚠️ Could not draw the chart (' + (ndChartErr && ndChartErr.message ? ndChartErr.message : 'unknown error') +
+        '). The table below still reflects your data correctly — try reloading the page or checking your internet connection to fix the chart.';
+    }
   }
 
   /* ================= RENDER: OVERVIEW TAB ================= */
@@ -1799,32 +1815,17 @@ tbody tr{animation:none !important;}
     el.textContent = '⚠️ ' + msg + ' — other sections of the dashboard are unaffected and still work.';
     el.style.display = 'block';
   }
-  let _renderTimer = 0, _renderToken = 0;
   function renderAll(){
-    if(_renderTimer) return;
-    _renderTimer = setTimeout(()=>{ _renderTimer = 0; doRender(); }, 0);
-  }
-  function doRender(){
-    const token = ++_renderToken;
-    safeRun('Filter cleanup', pruneStaleSelections);
     const data = getFilteredData();
     safeRun('Filter count', refreshFilterCount);
-    safeRun('KPI summary', ()=> renderKpis(data));
-    safeRun('Charts', ()=> renderTrendCharts(data, true));
     safeRun('Filter dropdowns', refreshAllDropdowns);
-    const steps = [
-      ['Month-wise trend table', ()=> renderTrend(data)],
-      ['All-SKU overview', ()=> renderOverview(data, document.getElementById('skuSearch') ? document.getElementById('skuSearch').value : '')],
-      ['Wing & Territory performance', ()=> renderGeo(data, document.getElementById('geoSearch') ? document.getElementById('geoSearch').value : '')],
-      ['Wing & Territory MoM comparison', ()=> renderGeoMom(data)],
-      ['Month-on-month comparison', ()=> renderMom(data)],
-      ['Row count footer', ()=> { document.getElementById('rowCountFoot').textContent = RAW.length.toLocaleString(); }]
-    ];
-    (function next(i){
-      if(token !== _renderToken || i >= steps.length) return;   // a newer filter change took over
-      safeRun(steps[i][0], steps[i][1]);
-      setTimeout(()=> next(i+1), 0);
-    })(0);
+    safeRun('KPI summary', ()=> renderKpis(data));
+    safeRun('Month-wise trend', ()=> renderTrend(data));
+    safeRun('All-SKU overview', ()=> renderOverview(data, document.getElementById('skuSearch') ? document.getElementById('skuSearch').value : ''));
+    safeRun('Wing & Territory performance', ()=> renderGeo(data, document.getElementById('geoSearch') ? document.getElementById('geoSearch').value : ''));
+    safeRun('Wing & Territory MoM comparison', ()=> renderGeoMom(data));
+    safeRun('Month-on-month comparison', ()=> renderMom(data));
+    safeRun('Row count footer', ()=> { document.getElementById('rowCountFoot').textContent = RAW.length.toLocaleString(); });
   }
 
   /* ================= EVENTS ================= */
@@ -1844,13 +1845,14 @@ tbody tr{animation:none !important;}
     });
   });
 
-  document.getElementById('skuSearch').addEventListener('input', ()=>{
+  function debounce(fn, ms){ let t; return function(){ clearTimeout(t); t = setTimeout(fn, ms); }; }
+  document.getElementById('skuSearch').addEventListener('input', debounce(()=>{
     renderOverview(getFilteredData(), document.getElementById('skuSearch').value);
-  });
+  }, 150));
 
-  document.getElementById('geoSearch').addEventListener('input', ()=>{
+  document.getElementById('geoSearch').addEventListener('input', debounce(()=>{
     renderGeo(getFilteredData(), document.getElementById('geoSearch').value);
-  });
+  }, 150));
 
   document.getElementById('geoLevelToggle').querySelectorAll('.seg-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -1868,11 +1870,11 @@ tbody tr{animation:none !important;}
 
   document.getElementById('salesLabelsToggle').addEventListener('change', (e)=>{
     showSalesLabels = e.target.checked;
-    renderTrendCharts(getFilteredData(), false);
+    renderTrend(getFilteredData());
   });
   document.getElementById('ndLabelsToggle').addEventListener('change', (e)=>{
     showNdLabels = e.target.checked;
-    renderTrendCharts(getFilteredData(), false);
+    renderTrend(getFilteredData());
   });
 
   ['trendTable','overviewTable','momTable','geoTable','geoMomTable'].forEach(id=>{
@@ -1911,7 +1913,7 @@ tbody tr{animation:none !important;}
     const target = parseFloat(m[0].replace(/,/g,'')); if(!isFinite(target)) return;
     const dec = (m[0].split('.')[1]||'').length, useComma = m[0].includes(',');
     const pre = el.textContent.slice(0, m.index), post = el.textContent.slice(m.index + m[0].length);
-    const t0 = performance.now(), dur = 500;
+    const t0 = performance.now(), dur = 900;
     (function step(now){
       const k = Math.min(1,(now-t0)/dur), v = target*(1-Math.pow(1-k,3));
       let txt = v.toFixed(dec); if(useComma) txt = Number(txt).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
@@ -1924,13 +1926,10 @@ tbody tr{animation:none !important;}
     new MutationObserver(()=> kpiHost.querySelectorAll('.kpi .val').forEach(countUp)).observe(kpiHost,{childList:true});
   }
 
-  // auto-load from Google Sheet on open, then keep in sync (every 5 min + when the tab is revisited)
+  // auto-load from Google Sheet on open
   loadFromSheet();
-  setInterval(()=>{ if(!document.hidden) loadFromSheet(true); }, 5*60*1000);
-  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && Date.now()-lastLoadAt > 60000) loadFromSheet(true); });
 
 })();
 </script>
-<div style="position:fixed;right:10px;bottom:6px;font:10px 'IBM Plex Mono',monospace;color:#8A9CB0;z-index:5;pointer-events:none">v5 · svg charts</div>
 </body>
 </html>
