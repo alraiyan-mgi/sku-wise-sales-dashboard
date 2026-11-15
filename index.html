@@ -522,6 +522,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
         <span class="ms">sync</span>
         Refresh data
       </button>
+      <button class="btn btn-ghost" id="tabsBtn" title="Set which Google Sheet tabs (Lines) to load">Sheet tabs</button>
       <button class="btn btn-ghost" id="resetBtn">Reset filters</button>
     </div>
   </div>
@@ -1048,14 +1049,26 @@ tbody tr:nth-child(even){background:#FAFCFF;}
   /* ================= GOOGLE SHEET LOADER ================= */
   const SHEET_ID = '1RpdFtfN1yH6iGLAowJqbA6WWZtB5jNqH4EXjflRZFKY';
   // Every tab (= every Line) of the workbook is loaded and merged into one dataset.
-  // Tabs are requested by NAME through the gviz endpoint, so no gid is needed.
-  // The list below is the safe fallback; the loader also tries to auto-discover tabs
-  // so a newly added tab is picked up without editing this file.
-  const SHEET_TABS_FALLBACK = ['A','B','C','D','F','G','U'];
+  // Tabs come from: (1) the list saved with the "Sheet tabs" button (tab names, or gid=123),
+  // (2) auto-discovery from the sheet page (when the browser allows it).
+  // If neither is available only the first tab is loaded.
+  const TABS_STORE_KEY = 'skuDash.sheetTabs';
   const FETCH_TIMEOUT_MS = 60000;
 
-  function sheetCsvUrl(tab){
-    return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab);
+  function getSavedTabs(){
+    try{ return localStorage.getItem(TABS_STORE_KEY) || ''; }catch(e){ return ''; }
+  }
+  function saveTabs(v){
+    try{ localStorage.setItem(TABS_STORE_KEY, v); }catch(e){}
+  }
+  function parseTabList(text){
+    return String(text||'').split(/[,\n]+/).map(x=>x.trim()).filter(Boolean).map(x=>{
+      const g = /^gid\s*=\s*(\d+)$/i.exec(x);
+      return g ? {param:'gid='+g[1], label:'gid '+g[1]} : {param:'sheet='+encodeURIComponent(x), label:x};
+    });
+  }
+  function sheetCsvUrl(param){
+    return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv' + (param ? '&' + param : '');
   }
   function fetchWithTimeout(url, ms){
     const ctrl = ('AbortController' in window) ? new AbortController() : null;
@@ -1067,13 +1080,13 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       const res = await fetchWithTimeout('https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/htmlview', 6000);
       if(!res.ok) return [];
       const html = await res.text();
-      const names = []; const re = /<li[^>]*id="sheet-button-\d+"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/g; let m;
-      while((m = re.exec(html))) names.push(m[1].replace(/&amp;/g,'&').trim());
-      return names.filter(Boolean);
-    }catch(e){ return []; }   // blocked by the browser (CORS) -> fall back to the fixed list
+      const out = []; const re = /<li[^>]*id="sheet-button-(\d+)"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/g; let m;
+      while((m = re.exec(html))) out.push({param:'gid='+m[1], label:m[2].replace(/&amp;/g,'&').trim()});
+      return out;
+    }catch(e){ return []; }   // blocked by the browser (CORS) -> use the saved list
   }
-  async function fetchTab(tab){
-    const res = await fetchWithTimeout(sheetCsvUrl(tab), FETCH_TIMEOUT_MS);
+  async function fetchTab(param){
+    const res = await fetchWithTimeout(sheetCsvUrl(param), FETCH_TIMEOUT_MS);
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
     if(/^\s*<(!doctype|html)/i.test(text)) throw new Error('Data is not accessible (check that sharing is "Anyone with the link").');
@@ -1118,44 +1131,52 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     const msgEl = document.getElementById('loadMsg');
     try{
       const discovered = await discoverTabs();
-      const tabs = Array.from(new Set([...SHEET_TABS_FALLBACK, ...discovered]));
+      const merged = [...parseTabList(getSavedTabs()), ...discovered];
+      const seenParam = new Set();
+      let tabs = merged.filter(t=>{ if(seenParam.has(t.param)) return false; seenParam.add(t.param); return true; });
+      if(!tabs.length) tabs = [{param:'', label:''}];      // nothing configured -> first tab only
       let done = 0;
       const setMsg = ()=>{ if(msgEl) msgEl.textContent = 'Loading all tabs… ' + done + '/' + tabs.length; };
       setMsg();
 
       // all tabs are downloaded in parallel
       const results = await Promise.all(tabs.map(async tab=>{
-        try{ const text = await fetchTab(tab); done++; setMsg(); return {tab, text}; }
+        try{ const text = await fetchTab(tab.param); done++; setMsg(); return {tab, text}; }
         catch(err){ done++; setMsg(); return {tab, error: err}; }
       }));
 
-      const all = [], loaded = [], failed = [], seen = new Set();
+      const all = [], loaded = [], failed = [], dupes = [], seen = new Map();
       let firstErr = null;
       results.forEach(r=>{
-        if(r.error){ failed.push(r.tab); if(!firstErr) firstErr = r.error; return; }
-        // an unknown tab name can make Google return the first tab again -> skip exact duplicates
+        const name = r.tab.label || '(first tab)';
+        if(r.error){ failed.push(name); if(!firstErr) firstErr = r.error; return; }
+        // Google returns the FIRST tab again when a tab name does not exist -> detect identical content
         const sig = r.text.length + '|' + r.text.slice(0,1500) + '|' + r.text.slice(-500);
-        if(seen.has(sig)) return;
-        seen.add(sig);
+        if(seen.has(sig)){ dupes.push(name); return; }
+        seen.set(sig, name);
         const parsed = Papa.parse(r.text, {header:true, skipEmptyLines:true});
-        const rows = normalizeRows(parsed.data, r.tab);
+        const rows = normalizeRows(parsed.data, r.tab.label);
         if(!rows.length) return;       // empty / helper tab
-        loaded.push(r.tab);
+        loaded.push(name);
         for(let i=0;i<rows.length;i++) all.push(rows[i]);
       });
 
       if(!all.length) throw (firstErr || new Error('No data rows were found.'));
       if(failed.length) console.warn('Tabs that failed to load:', failed.join(', '));
+      if(dupes.length) console.warn('Tabs skipped (not found / same data as another tab):', dupes.join(', '));
 
       ingest(all);
       const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       setBusy(false);
-      let label = 'Updated ' + t + ' · ' + loaded.length + ' tabs · ' + all.length.toLocaleString() + ' rows';
+      let label = 'Updated ' + t + ' · ' + loaded.length + ' tab(s) · ' + all.length.toLocaleString() + ' rows';
       if(failed.length) label += ' · ⚠ failed: ' + failed.join(', ');
+      if(dupes.length) label += ' · ⚠ not found: ' + dupes.join(', ');
       updateDataStatus(label, true);
       const pill = document.getElementById('dataStatus');
-      if(pill) pill.title = 'Loaded Lines: ' + loaded.join(', ') + (failed.length ? '\nFailed: ' + failed.join(', ') : '');
-      if(failed.length) document.getElementById('dataDot').className = 'dot off';
+      if(pill) pill.title = 'Loaded: ' + loaded.join(', ') + (failed.length ? '\nFailed: ' + failed.join(', ') : '') +
+        (dupes.length ? '\nNot found (Google returned the first tab again): ' + dupes.join(', ') + '\nUse the "Sheet tabs" button to fix the tab names.' : '') +
+        (loaded.length===1 && !getSavedTabs() ? '\nOnly the first tab is loaded. Click "Sheet tabs" to add the other tabs.' : '');
+      if(failed.length || dupes.length) document.getElementById('dataDot').className = 'dot off';
       document.getElementById('refreshBtn').classList.remove('loading');
       document.getElementById('refreshBtn').disabled = false;
     }catch(err){
@@ -1830,6 +1851,12 @@ tbody tr:nth-child(even){background:#FAFCFF;}
 
   /* ================= EVENTS ================= */
   document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
+  document.getElementById('tabsBtn').addEventListener('click', ()=>{
+    const v = prompt('Google Sheet-er tab-er naam likhun (comma diye alada kore).\nNaam na jante gid=123 likhte paren (tab-e click korle URL-er #gid= er por-er number).\n\nJemon:  Line B, Line C, gid=456', getSavedTabs());
+    if(v === null) return;
+    saveTabs(v);
+    loadFromSheet();
+  });
   document.getElementById('retryBtn').addEventListener('click', loadFromSheet);
   document.getElementById('resetBtn').addEventListener('click', ()=>{
     FILTER_DIMS.forEach(d=> ACTIVE[d.key].clear());
