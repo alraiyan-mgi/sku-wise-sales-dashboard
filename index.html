@@ -1052,6 +1052,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
   // Tabs come from: (1) the list saved with the "Sheet tabs" button (tab names, or gid=123),
   // (2) auto-discovery from the sheet page (when the browser allows it).
   // If neither is available only the first tab is loaded.
+  const DEFAULT_TABS = ['A','C'];     // tabs (Lines) loaded by default; extra tabs can be added with the "Sheet tabs" button
   const TABS_STORE_KEY = 'skuDash.sheetTabs';
   const FETCH_TIMEOUT_MS = 60000;
 
@@ -1068,7 +1069,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     });
   }
   function sheetCsvUrl(param){
-    return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv' + (param ? '&' + param : '');
+    return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&headers=1' + (param ? '&' + param : '');
   }
   function fetchWithTimeout(url, ms){
     const ctrl = ('AbortController' in window) ? new AbortController() : null;
@@ -1084,6 +1085,25 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       while((m = re.exec(html))) out.push({param:'gid='+m[1], label:m[2].replace(/&amp;/g,'&').trim()});
       return out;
     }catch(e){ return []; }   // blocked by the browser (CORS) -> use the saved list
+  }
+  // Parses one tab's CSV. If Google did not treat the first line as the heading row, the real
+  // heading row is searched for within the first few lines.
+  function parseTabCsv(text, tabLabel){
+    const norm = v => String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,'');
+    let parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
+    let heads = parsed.meta && parsed.meta.fields ? parsed.meta.fields : [];
+    const hasCols = heads.some(h=> norm(h).includes('sku')) && heads.some(h=> norm(h).includes('month'));
+    if(hasCols) return normalizeRows(parsed.data, tabLabel);
+    const grid = Papa.parse(text, {header:false, skipEmptyLines:true}).data;
+    for(let i=0;i<Math.min(grid.length,10);i++){
+      const cells = grid[i].map(norm);
+      if(cells.some(c=>c.includes('sku')) && cells.some(c=>c.includes('month'))){
+        const names = grid[i].map((h,j)=> String(h||('col'+j)).trim());
+        const objs = grid.slice(i+1).map(row=>{ const o={}; names.forEach((n,j)=>{ o[n]=row[j]; }); return o; });
+        return normalizeRows(objs, tabLabel);
+      }
+    }
+    return normalizeRows(parsed.data, tabLabel);
   }
   async function fetchTab(param){
     const res = await fetchWithTimeout(sheetCsvUrl(param), FETCH_TIMEOUT_MS);
@@ -1130,11 +1150,9 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     showLoading();
     const msgEl = document.getElementById('loadMsg');
     try{
-      const discovered = await discoverTabs();
-      const merged = [...parseTabList(getSavedTabs()), ...discovered];
+      const merged = [...parseTabList(DEFAULT_TABS.join(',')), ...parseTabList(getSavedTabs())];
       const seenParam = new Set();
       let tabs = merged.filter(t=>{ if(seenParam.has(t.param)) return false; seenParam.add(t.param); return true; });
-      if(!tabs.length) tabs = [{param:'', label:''}];      // nothing configured -> first tab only
       let done = 0;
       const setMsg = ()=>{ if(msgEl) msgEl.textContent = 'Loading all tabs… ' + done + '/' + tabs.length; };
       setMsg();
@@ -1145,7 +1163,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
         catch(err){ done++; setMsg(); return {tab, error: err}; }
       }));
 
-      const all = [], loaded = [], failed = [], dupes = [], seen = new Map();
+      const all = [], loaded = [], failed = [], dupes = [], empty = [], counts = {}, seen = new Map();
       let firstErr = null;
       results.forEach(r=>{
         const name = r.tab.label || '(first tab)';
@@ -1154,13 +1172,13 @@ tbody tr:nth-child(even){background:#FAFCFF;}
         const sig = r.text.length + '|' + r.text.slice(0,1500) + '|' + r.text.slice(-500);
         if(seen.has(sig)){ dupes.push(name); return; }
         seen.set(sig, name);
-        const parsed = Papa.parse(r.text, {header:true, skipEmptyLines:true});
-        const rows = normalizeRows(parsed.data, r.tab.label);
-        if(!rows.length) return;       // empty / helper tab
-        loaded.push(name);
+        const rows = parseTabCsv(r.text, r.tab.label);
+        if(!rows.length){ empty.push(name); return; }       // no usable rows in this tab
+        loaded.push(name); counts[name] = rows.length;
         for(let i=0;i<rows.length;i++) all.push(rows[i]);
       });
 
+      if(empty.length) console.warn('Tabs with no usable rows:', empty.join(', '));
       if(!all.length) throw (firstErr || new Error('No data rows were found.'));
       if(failed.length) console.warn('Tabs that failed to load:', failed.join(', '));
       if(dupes.length) console.warn('Tabs skipped (not found / same data as another tab):', dupes.join(', '));
@@ -1171,12 +1189,13 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       let label = 'Updated ' + t + ' · ' + loaded.length + ' tab(s) · ' + all.length.toLocaleString() + ' rows';
       if(failed.length) label += ' · ⚠ failed: ' + failed.join(', ');
       if(dupes.length) label += ' · ⚠ not found: ' + dupes.join(', ');
+      if(empty.length) label += ' · ⚠ no data: ' + empty.join(', ');
       updateDataStatus(label, true);
       const pill = document.getElementById('dataStatus');
-      if(pill) pill.title = 'Loaded: ' + loaded.join(', ') + (failed.length ? '\nFailed: ' + failed.join(', ') : '') +
+      if(pill) pill.title = 'Loaded: ' + loaded.map(n=> n + ' (' + (counts[n]||0).toLocaleString() + ' rows)').join(', ') + (empty.length ? '\nNo usable rows (check column headings): ' + empty.join(', ') : '') + (failed.length ? '\nFailed: ' + failed.join(', ') : '') +
         (dupes.length ? '\nNot found (Google returned the first tab again): ' + dupes.join(', ') + '\nUse the "Sheet tabs" button to fix the tab names.' : '') +
         (loaded.length===1 && !getSavedTabs() ? '\nOnly the first tab is loaded. Click "Sheet tabs" to add the other tabs.' : '');
-      if(failed.length || dupes.length) document.getElementById('dataDot').className = 'dot off';
+      if(failed.length || dupes.length || empty.length) document.getElementById('dataDot').className = 'dot off';
       document.getElementById('refreshBtn').classList.remove('loading');
       document.getElementById('refreshBtn').disabled = false;
     }catch(err){
