@@ -475,7 +475,8 @@ tbody tr:nth-child(7){animation-delay:.12s}tbody tr:nth-child(8){animation-delay
 .kpi .val{font-size:26px; letter-spacing:-.5px; color:#0A2347;}
 .panel-title{position:relative; padding-left:14px;}
 .panel-title::before{content:""; position:absolute; left:0; top:3px; bottom:3px; width:4px; border-radius:4px; background:linear-gradient(180deg,#4C8DF6,#0B57D0);}
-.panel canvas{filter:drop-shadow(0 6px 10px rgba(11,87,208,.08));}
+.chart-box{position:relative; width:100%; height:380px;}
+.chart-box canvas{display:block;}
 .tbl-wrap thead th{position:sticky; top:0; z-index:2; text-transform:uppercase; font-size:11px; letter-spacing:.5px; color:#4A5B73;}
 tbody tr:nth-child(even){background:#FAFCFF;}
 .legend-sw{border-radius:50%;}
@@ -523,6 +524,8 @@ tbody tr:nth-child(even){background:#FAFCFF;}
         <span class="ms">sync</span>
         Refresh data
       </button>
+      <button class="btn btn-ghost" id="fileBtn" title="Load data manually from an Excel (.xlsx) or CSV file on your computer">Load file</button>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple style="display:none">
       <button class="btn btn-ghost" id="tabsBtn" title="Set which Google Sheet tabs (Lines) to load">Sheet tabs</button>
       <button class="btn btn-ghost" id="resetBtn">Reset filters</button>
     </div>
@@ -546,6 +549,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
         <p id="errorMsg">Something went wrong.</p>
         <div class="dz-actions">
           <button class="btn btn-primary" id="retryBtn">Try again</button>
+          <button class="btn btn-ghost" id="fileBtn2" style="color:var(--accent);border-color:var(--accent);">Load file manually</button>
         </div>
         
       </div>
@@ -584,7 +588,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
             Show data labels
           </label>
         </div>
-        <canvas id="salesChart" height="90"></canvas>
+        <div class="chart-box"><canvas id="salesChart"></canvas></div>
         <div id="chartFallback" style="display:none; padding:26px 4px; color:var(--muted); font-size:12.5px; line-height:1.7;"></div>
       </div>
 
@@ -600,7 +604,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
             Show data labels
           </label>
         </div>
-        <canvas id="ndChart" height="90"></canvas>
+        <div class="chart-box"><canvas id="ndChart"></canvas></div>
         <div id="ndChartFallback" style="display:none; padding:26px 4px; color:var(--muted); font-size:12.5px; line-height:1.7;"></div>
       </div>
 
@@ -808,10 +812,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
   if(typeof Chart !== 'undefined'){
     Chart.defaults.font.family = "'Roboto', system-ui, sans-serif";
     Chart.defaults.color = '#5B6B82';
-    Chart.defaults.animation = {
-      duration: 1100, easing: 'easeOutQuart',
-      delay: (c)=> (c.type==='data' && c.mode==='default') ? c.dataIndex*55 + c.datasetIndex*70 : 0
-    };
+    Chart.defaults.animation = { duration: 450, easing: 'easeOutQuart' };
     Chart.defaults.plugins.legend.labels.usePointStyle = true;
     Chart.defaults.plugins.legend.labels.pointStyle = 'rectRounded';
     Chart.defaults.plugins.legend.labels.padding = 16;
@@ -819,6 +820,8 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     tt.backgroundColor = 'rgba(24,32,48,.95)'; tt.cornerRadius = 12; tt.padding = 12; tt.boxPadding = 6;
     tt.usePointStyle = true; tt.titleMarginBottom = 8; tt.caretSize = 6; tt.borderColor = 'rgba(255,255,255,.08)'; tt.borderWidth = 1;
   }
+  let forceNoAnim = false, verifyTimer = null, verifyTries = 0;
+  function destroyChartOn(cv){ try{ const ex = Chart.getChart(cv); if(ex) ex.destroy(); }catch(e){} }
   let salesChart = null;
   let ndChart = null;
   let showSalesLabels = false;
@@ -1551,7 +1554,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       const labels = rows.map(r=>r.period);
       const values = rows.map(r=>r.sales);
       const ctx = canvas.getContext('2d');
-      if(salesChart) salesChart.destroy();
+      destroyChartOn(canvas); salesChart = null;
       const built = buildYearBarDatasets(ctx, rows, 'sales', 'Sales (Delivery Volume)', ['rgba(47,128,237,1)','rgba(11,61,145,0.85)']);
       salesChart = new Chart(ctx, {
         type:'bar',
@@ -1567,7 +1570,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
         },
         plugins:[ makeValueLabelsPlugin(()=>showSalesLabels), makeExtremesPlugin(()=>showSalesLabels) ],
         options:{
-          responsive:true,
+          responsive:true, maintainAspectRatio:false, ...(forceNoAnim?{animation:false}:{}),
           layout:{padding:{top:46,right:6}},
           interaction:{mode:'index', intersect:false},
           plugins:{
@@ -1604,7 +1607,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       const labels = rows.map(r=>r.period);
       const ndValues = rows.map(r=>r.nd);
       const ndCtx = ndCanvas.getContext('2d');
-      if(ndChart) ndChart.destroy();
+      destroyChartOn(ndCanvas); ndChart = null;
       const ndBuilt = buildYearBarDatasets(ndCtx, rows, 'nd', 'Numeric Distribution (ND)', ['rgba(0,184,169,1)','rgba(0,110,130,0.85)']);
       ndChart = new Chart(ndCtx, {
         type:'bar',
@@ -1620,7 +1623,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
         },
         plugins:[ makeValueLabelsPlugin(()=>showNdLabels), makeExtremesPlugin(()=>showNdLabels) ],
         options:{
-          responsive:true,
+          responsive:true, maintainAspectRatio:false, ...(forceNoAnim?{animation:false}:{}),
           layout:{padding:{top:46,right:6}},
           interaction:{mode:'index', intersect:false},
           plugins:{
@@ -1644,6 +1647,52 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       ndFallback.innerHTML = '⚠️ Could not draw the chart (' + (ndChartErr && ndChartErr.message ? ndChartErr.message : 'unknown error') +
         '). The table below still reflects your data correctly — try reloading the page or checking your internet connection to fix the chart.';
     }
+    scheduleChartVerify();
+  }
+
+  /* ===== self-check: if a trend chart is drawn blank, rebuild it once (no animation) and otherwise explain why ===== */
+  function canvasIsBlank(cv){
+    try{
+      if(!cv || !cv.width || !cv.height) return true;
+      const d = cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;
+      for(let i=3;i<d.length;i+=40){ if(d[i]>0) return false; }
+      return true;
+    }catch(e){ return false; }
+  }
+  function scheduleChartVerify(){
+    clearTimeout(verifyTimer);
+    verifyTimer = setTimeout(()=>{
+      const pane = document.getElementById('pane-trend');
+      if(!pane || pane.style.display==='none' || typeof Chart==='undefined') return;
+      const rows = groupByPeriod(getFilteredData());
+      if(!rows.length) return;
+      const bad = [['salesChart','chartFallback','sales'],['ndChart','ndChartFallback','nd']].filter(x=>{
+        const cv = document.getElementById(x[0]);
+        return cv && cv.style.display!=='none' && canvasIsBlank(cv);
+      });
+      if(!bad.length){ verifyTries = 0; return; }
+      if(verifyTries < 1){
+        verifyTries++; forceNoAnim = true;
+        bad.forEach(x=>{
+          const cv = document.getElementById(x[0]); destroyChartOn(cv);
+          cv.parentNode.innerHTML = '<canvas id="'+x[0]+'"></canvas>';
+          if(x[0]==='salesChart') salesChart = null; else ndChart = null;
+        });
+        renderTrend(getFilteredData());
+        return;
+      }
+      verifyTries = 0;
+      bad.forEach(x=>{
+        const cv = document.getElementById(x[0]); const fb = document.getElementById(x[1]);
+        const vals = rows.map(r=>r[x[2]]);
+        cv.style.display = 'none'; fb.style.display = 'block';
+        fb.innerHTML = '⚠️ Chart drew blank. Diagnostic (send this to support): rows='+rows.length+
+          ', first='+rows[0].period+', last='+rows[rows.length-1].period+
+          ', min='+Math.min.apply(null,vals)+', max='+Math.max.apply(null,vals)+
+          ', canvas='+cv.width+'x'+cv.height+', dpr='+window.devicePixelRatio+
+          ', Chart.js='+(Chart.version||'?')+', browser='+navigator.userAgent.slice(0,90);
+      });
+    }, 900);
   }
 
   /* ================= RENDER: OVERVIEW TAB ================= */
@@ -1976,6 +2025,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       tab.classList.add('active');
       document.querySelectorAll('.tabpane').forEach(p=>p.style.display='none');
       document.getElementById('pane-'+tab.dataset.tab).style.display='block';
+      if(tab.dataset.tab==='trend'){ try{ if(salesChart) salesChart.resize(); if(ndChart) ndChart.resize(); }catch(e){} }
     });
   });
 
@@ -2059,6 +2109,49 @@ tbody tr:nth-child(even){background:#FAFCFF;}
   if(kpiHost && !matchMedia('(prefers-reduced-motion:reduce)').matches){
     new MutationObserver(()=> kpiHost.querySelectorAll('.kpi .val').forEach(countUp)).observe(kpiHost,{childList:true});
   }
+
+
+  /* ===== Manual data load (Excel / CSV file, or drag & drop) ===== */
+  async function loadFiles(files){
+    files = Array.from(files||[]);
+    if(!files.length) return;
+    const all = [], notes = [];
+    try{
+      for(const f of files){
+        const base = f.name.replace(/\.[^.]+$/,'');
+        if(/\.csv$/i.test(f.name)){
+          const rows = parseTabCsv(await f.text(), base);
+          notes.push(f.name + ': ' + rows.length.toLocaleString() + ' rows');
+          rows.forEach(r=> all.push(r));
+        } else {
+          if(typeof XLSX === 'undefined') throw new Error('Excel reader library did not load (check internet). Save the file as CSV and try again.');
+          const wb = XLSX.read(await f.arrayBuffer(), {type:'array'});
+          wb.SheetNames.forEach(sn=>{
+            const rows = parseTabCsv(XLSX.utils.sheet_to_csv(wb.Sheets[sn], {blankrows:false}), sn);
+            if(!rows.length){ notes.push(f.name + ' › ' + sn + ': skipped (no SKU/Month columns)'); return; }
+            notes.push(f.name + ' › ' + sn + ': ' + rows.length.toLocaleString() + ' rows');
+            rows.forEach(r=> all.push(r));
+          });
+        }
+      }
+      if(!all.length) throw new Error('No usable rows found. The file needs columns like Line, Year, Month, Wing, Region, Territory, SKU Name, Distinct Count of Outlet, Delivery Volume, Delivery Value.');
+      lastDetails = notes;
+      ingest(all);
+      updateDataStatus('Manual file · ' + all.length.toLocaleString() + ' rows (click for details)', true);
+      document.getElementById('dataDot').className = 'dot';
+      const pill = document.getElementById('dataStatus'); if(pill){ pill.style.cursor='pointer'; }
+    }catch(err){
+      alert('File load failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+  const fileInput = document.getElementById('fileInput');
+  ['fileBtn','fileBtn2'].forEach(id=> document.getElementById(id).addEventListener('click', ()=> fileInput.click()));
+  fileInput.addEventListener('change', ()=>{ loadFiles(fileInput.files); fileInput.value=''; });
+  ['dragover','drop'].forEach(ev=> document.addEventListener(ev, e=>{
+    if(!e.dataTransfer || !Array.from(e.dataTransfer.types||[]).includes('Files')) return;
+    e.preventDefault();
+    if(ev==='drop') loadFiles(e.dataTransfer.files);
+  }));
 
   // auto-load from Google Sheet on open
   loadFromSheet();
