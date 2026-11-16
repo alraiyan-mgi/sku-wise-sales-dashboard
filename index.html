@@ -519,7 +519,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       </div>
     </div>
     <div class="top-actions">
-      <span class="meta-pill" id="dataStatus"><span class="dot off" id="dataDot"></span><span id="dataStatusText">Loading data…</span></span>
+      <span class="meta-pill" id="dataStatus" style="display:none"><span class="dot off" id="dataDot"></span><span id="dataStatusText">Loading data…</span></span>
       <button class="btn btn-primary" id="refreshBtn">
         <span class="ms">sync</span>
         Refresh data
@@ -1056,7 +1056,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
   // Tabs come from: (1) the list saved with the "Sheet tabs" button (tab names, or gid=123),
   // (2) auto-discovery from the sheet page (when the browser allows it).
   // If neither is available only the first tab is loaded.
-  const DEFAULT_TABS = ['A','C'];     // tabs (Lines) loaded by default; extra tabs can be added with the "Sheet tabs" button
+  const DEFAULT_TABS = ['A','C','D'];     // tabs (Lines) loaded by default; extra tabs can be added with the "Sheet tabs" button
   const TABS_STORE_KEY = 'skuDash.sheetTabs';
   const FETCH_TIMEOUT_MS = 60000;
 
@@ -1190,7 +1190,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     showLoading();
     const msgEl = document.getElementById('loadMsg');
     try{
-      // tabs to load: defaults (A, C) + anything saved with the "Sheet tabs" button (saved entry wins for the same label)
+      // tabs to load: defaults (A, C, D) + anything saved with the "Sheet tabs" button (saved entry wins for the same label)
       const byLabel = new Map();
       [...DEFAULT_TABS.map(n=>({label:n})), ...parseTabList(getSavedTabs())].forEach(t=> byLabel.set(t.label.toLowerCase(), t));
       const tabs = Array.from(byLabel.values());
@@ -1287,7 +1287,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       document.getElementById('dataDot').className = problems.length ? 'dot off' : 'dot';
       document.getElementById('refreshBtn').classList.remove('loading');
       document.getElementById('refreshBtn').disabled = false;
-      if(problems.length && !window.__tabAlertShown){ window.__tabAlertShown = true; alert('Tab load report:\n\n' + details.join('\n\n') + '\n\nFix: click "Sheet tabs" and enter e.g.  A, C=123  (123 = number after #gid= in the address bar when you open that tab).'); }
+      if(problems.length && !window.__tabAlertShown){ window.__tabAlertShown = true; alert('Tab load report:\n\n' + details.join('\n\n') + '\n\nFix: click "Sheet tabs" and enter e.g.  A, C, D=123  (123 = number after #gid= in the address bar when you open that tab).'); }
     }catch(err){
       showLoadError((err && err.message) ? err.message : 'Unknown error');
     }finally{
@@ -2008,7 +2008,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
   document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
   document.getElementById('dataStatus').addEventListener('click', ()=>{ if(lastDetails.length) alert('Tab load report:\n\n' + lastDetails.join('\n\n')); });
   document.getElementById('tabsBtn').addEventListener('click', ()=>{
-    const v = prompt('Extra tab / gid override (comma diye alada kore). A ar C default-e load hoy.\nJemon:  C=123   (123 = oi tab-e click korle URL-er #gid= er por-er number)\nba notun tab:  D, E=456', getSavedTabs());
+    const v = prompt('Extra tab / gid override (comma diye alada kore). A, C ar D default-e load hoy.\nJemon:  D=123   (123 = oi tab-e click korle URL-er #gid= er por-er number)\nba notun tab:  E, F=456', getSavedTabs());
     if(v === null) return;
     saveTabs(v);
     loadFromSheet();
