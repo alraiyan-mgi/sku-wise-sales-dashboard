@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js\'><\/script>')"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js\'><\/script>')"></script>
-<link rel="preconnect" href="https://docs.google.com">
 <style>
   :root{
     --navy:#081B33;
@@ -1056,7 +1055,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
   // Tabs come from: (1) the list saved with the "Sheet tabs" button (tab names, or gid=123),
   // (2) auto-discovery from the sheet page (when the browser allows it).
   // If neither is available only the first tab is loaded.
-  const DEFAULT_TABS = ['A','B','C','D'];     // tabs (Lines) loaded by default; extra tabs can be added with the "Sheet tabs" button
+  const DEFAULT_TABS = ['A','B','C','D','F'];     // tabs (Lines) loaded by default; extra tabs can be added with the "Sheet tabs" button
   const TABS_STORE_KEY = 'skuDash.sheetTabs';
   const FETCH_TIMEOUT_MS = 60000;
 
@@ -1107,85 +1106,82 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       return out;
     }catch(e){ return []; }   // blocked by the browser (CORS) -> use the saved list
   }
-  // Parses one tab's CSV. If Google did not treat the first line as the heading row, the real
-  // heading row is searched for within the first few lines.
-  /* ---- fast path: parse CSV as a plain grid and build rows by column index (no per-row objects, shared strings) ---- */
-  function mapColumns(headers){
-    const exactHeader = (name)=> headers.find(h=> String(h).toLowerCase().replace(/[^a-z0-9]/g,'') === name) || null;
-    return {
-      line: exactHeader('line'),
-      year: findHeader(headers, ['year']),
-      month: findHeader(headers, ['month']),
-      wing: findHeader(headers, ['wing']),
-      region: findHeader(headers, ['region']),
-      territory: findHeader(headers, ['territory']),
-      category: findHeader(headers, ['productcategory','category']),
-      brand: findHeader(headers, ['brand']),
-      material: findHeader(headers, ['material']),
-      sku: findHeader(headers, ['skuname','sku']),
-      nd: findHeader(headers, ['distinctcountofoutlet','outlet','distribution']),
-      volume: findHeader(headers, ['deliveryvolume','volume']),
-      value: findHeader(headers, ['deliveryvalue','value']),
-    };
-  }
-  const _pool = new Map();
-  function intern(v){ let x = _pool.get(v); if(x === undefined){ _pool.set(v, v); x = v; } return x; }
+  // Parses one tab's CSV straight from arrays (no per-row objects) and de-duplicates repeated strings,
+  // which is noticeably faster and lighter on memory for A, B, C, D, F combined.
+  const _intern = {};
+  function intern(k, v){ const m = _intern[k] || (_intern[k] = new Map()); const h = m.get(v); if(h !== undefined) return h; m.set(v, v); return v; }
   function normalizeGrid(headers, grid, start, tabName){
-    const map = mapColumns(headers), ix = {};
-    Object.keys(map).forEach(k=>{ ix[k] = map[k] == null ? -1 : headers.indexOf(map[k]); });
-    const txt = (r,k)=>{ const i = ix[k]; if(i < 0) return ''; const v = r[i]; return v == null ? '' : String(v).trim(); };
-    const num = (r,k)=>{ const i = ix[k]; return i < 0 ? 0 : cleanNum(r[i]); };
+    const nz = h => String(h==null?'':h).toLowerCase().replace(/[^a-z0-9]/g,'');
+    const H = headers.map(nz);
+    const find = (pats, exact)=>{ for(const p of pats){ const pp = p.replace(/[^a-z0-9]/g,''); const i = exact ? H.indexOf(pp) : H.findIndex(h=>h.includes(pp)); if(i>=0) return i; } return -1; };
+    const c = {
+      line:find(['line'],true), year:find(['year']), month:find(['month']), wing:find(['wing']), region:find(['region']),
+      territory:find(['territory']), category:find(['productcategory','category']), brand:find(['brand']), material:find(['material']),
+      sku:find(['skuname','sku']), nd:find(['distinctcountofoutlet','outlet','distribution']),
+      volume:find(['deliveryvolume','volume']), value:find(['deliveryvalue','value'])
+    };
+    const S = (r,i)=> i<0 || r[i]==null ? '' : String(r[i]).trim();
     const out = [];
-    for(let n = start; n < grid.length; n++){
-      const r = grid[n];
-      const sku = txt(r,'sku'), month = txt(r,'month');
+    for(let k=start;k<grid.length;k++){
+      const r = grid[k];
+      const sku = S(r,c.sku), month = S(r,c.month);
       if(!sku && !month) continue;
       out.push({
-        line: intern(txt(r,'line') || tabName || ''),
-        year: intern(txt(r,'year').replace(/,/g,'')),
-        month: intern(month),
-        wing: intern(txt(r,'wing')),
-        region: intern(txt(r,'region')),
-        territory: intern(txt(r,'territory')),
-        category: intern(txt(r,'category')),
-        brand: intern(txt(r,'brand')),
-        material: intern(txt(r,'material')),
-        sku: intern(sku),
-        nd: num(r,'nd'), volume: num(r,'volume'), value: num(r,'value'),
+        line: intern('line', S(r,c.line) || tabName || ''),
+        year: intern('year', S(r,c.year).replace(/,/g,'')),
+        month: intern('month', month),
+        wing: intern('wing', S(r,c.wing)),
+        region: intern('region', S(r,c.region)),
+        territory: intern('territory', S(r,c.territory)),
+        category: intern('category', S(r,c.category)),
+        brand: intern('brand', S(r,c.brand)),
+        material: intern('material', S(r,c.material)),
+        sku: intern('sku', sku),
+        nd: c.nd<0 ? 0 : cleanNum(r[c.nd]),
+        volume: c.volume<0 ? 0 : cleanNum(r[c.volume]),
+        value: c.value<0 ? 0 : cleanNum(r[c.value])
       });
     }
     return out;
   }
-  // Parses one tab's CSV. The real heading row is searched for within the first few lines.
   function parseTabCsv(text, tabLabel){
-    const norm = v => String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,'');
+    const nz = v => String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,'');
     const grid = Papa.parse(text, {header:false, skipEmptyLines:true}).data;
     for(let i=0;i<Math.min(grid.length,10);i++){
-      const cells = grid[i].map(norm);
-      if(cells.some(c=>c.includes('sku')) && cells.some(c=>c.includes('month'))){
-        const names = grid[i].map((h,j)=> String(h||('col'+j)).trim());
-        return normalizeGrid(names, grid, i+1, tabLabel);
-      }
+      const cells = grid[i].map(nz);
+      if(cells.some(c=>c.includes('sku')) && cells.some(c=>c.includes('month'))) return normalizeGrid(grid[i], grid, i+1, tabLabel);
     }
     return [];
   }
-  // SheetJS (~900 KB) is only needed for the manual Excel upload / workbook fallback, so it loads on demand.
+  // Tabs to load = defaults (A, B, C, D, F) + whatever was saved with the "Sheet tabs" button.
+  function getTabs(){
+    const byLabel = new Map();
+    [...DEFAULT_TABS.map(n=>({label:n})), ...parseTabList(getSavedTabs())].forEach(t=> byLabel.set(t.label.toLowerCase(), t));
+    return Array.from(byLabel.values());
+  }
+  const tabsKey = ()=> getTabs().map(t=> t.label + (t.gid ? '#'+t.gid : '') + (t.sheetName ? '@'+t.sheetName : '')).join(',');
+  // The big Excel reader is only needed as a fallback / for manual files, so it is loaded on demand.
   let _xlsxP = null;
   function ensureXLSX(){
     if(typeof XLSX !== 'undefined') return Promise.resolve();
     if(_xlsxP) return _xlsxP;
     const urls = ['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js','https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'];
-    _xlsxP = new Promise((res, rej)=>{
-      let k = 0;
-      (function next(){
-        if(k >= urls.length){ _xlsxP = null; return rej(new Error('Excel reader library did not load')); }
-        const el = document.createElement('script'); el.src = urls[k++];
-        el.onload = ()=> res(); el.onerror = ()=>{ el.remove(); next(); };
-        document.head.appendChild(el);
-      })();
-    });
+    _xlsxP = (async ()=>{
+      for(const u of urls){
+        try{ await new Promise((ok,no)=>{ const el = document.createElement('script'); el.src = u; el.onload = ok; el.onerror = no; document.head.appendChild(el); }); if(typeof XLSX !== 'undefined') return; }catch(e){}
+      }
+      _xlsxP = null; throw new Error('Excel reader library did not load');
+    })();
     return _xlsxP;
   }
+  /* ---- local cache (IndexedDB): the dashboard opens instantly with the last data, then refreshes in the background ---- */
+  const CACHE_DB='skuDash', CACHE_STORE='kv';
+  function idb(){ return new Promise((res,rej)=>{ try{ const q = indexedDB.open(CACHE_DB,1); q.onupgradeneeded = ()=> q.result.createObjectStore(CACHE_STORE); q.onsuccess = ()=> res(q.result); q.onerror = ()=> rej(q.error); }catch(e){ rej(e); } }); }
+  async function cacheGet(key){ try{ const db = await idb(); return await new Promise(res=>{ const r = db.transaction(CACHE_STORE).objectStore(CACHE_STORE).get(key); r.onsuccess = ()=> res(r.result||null); r.onerror = ()=> res(null); }); }catch(e){ return null; } }
+  async function cachePut(key,val){ try{ const db = await idb(); await new Promise(res=>{ const tx = db.transaction(CACHE_STORE,'readwrite'); tx.objectStore(CACHE_STORE).put(val,key); tx.oncomplete = tx.onerror = tx.onabort = ()=> res(); }); }catch(e){} }
+  function datasetSig(rows){ let a=0,b=0,c=0; for(let i=0;i<rows.length;i++){ a+=rows[i].nd; b+=rows[i].volume; c+=rows[i].value; } return rows.length+'|'+a+'|'+b+'|'+c; }
+  let bgRefresh = false, cachedSig = null;
+
   async function fetchVariant(variant){
     const res = await fetchWithTimeout(sheetCsvUrl(variant.param, variant.h), FETCH_TIMEOUT_MS);
     if(!res.ok) throw new Error('HTTP ' + res.status);
@@ -1238,61 +1234,20 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       document.getElementById('errorBox').style.display = 'block';
       document.getElementById('errorMsg').textContent = msg;
     } else {
-      alert('Loading failed: ' + msg + '\nShowing the previously loaded data.');
-      updateDataStatus('Previous data', true);
+      if(!bgRefresh) alert('Loading failed: ' + msg + '\nShowing the previously loaded data.');
+      updateDataStatus(bgRefresh ? 'Offline · showing saved data' : 'Previous data', true);
     }
   }
   let isLoading = false;
   let lastDetails = [];
-  let dataSig = null;
-
-  function currentTabs(){
-    const byLabel = new Map();
-    [...DEFAULT_TABS.map(n=>({label:n})), ...parseTabList(getSavedTabs())].forEach(t=> byLabel.set(t.label.toLowerCase(), t));
-    return Array.from(byLabel.values());
-  }
-  function tabsKey(){ return currentTabs().map(t=> t.label + (t.gid||'') + (t.sheetName||'')).join(',') + '|v2'; }
-
-  /* ---- IndexedDB cache: the dashboard opens instantly with the last data, then refreshes from the Sheet in the background ---- */
-  function idbOpen(){
-    return new Promise((res, rej)=>{
-      try{
-        const q = indexedDB.open('skuDash', 1);
-        q.onupgradeneeded = ()=> q.result.createObjectStore('kv');
-        q.onsuccess = ()=> res(q.result); q.onerror = ()=> rej(q.error);
-      }catch(e){ rej(e); }
-    });
-  }
-  async function cacheGet(){
-    try{
-      const db = await idbOpen();
-      return await new Promise(res=>{ const q = db.transaction('kv').objectStore('kv').get('rows'); q.onsuccess = ()=> res(q.result || null); q.onerror = ()=> res(null); });
-    }catch(e){ return null; }
-  }
-  async function cachePut(v){
-    try{ const db = await idbOpen(); db.transaction('kv','readwrite').objectStore('kv').put(v, 'rows'); }catch(e){}
-  }
-  const dataSigOf = rows => rows.length + '|' + rows.reduce((a,r)=> a + r.volume + r.value + r.nd, 0);
   async function loadFromSheet(){
     if(isLoading) return;
     isLoading = true;
-    let fromCache = false;
-    if(!RAW.length && !window.__cacheTried){
-      window.__cacheTried = true;
-      const c = await cacheGet();
-      if(c && c.rows && c.rows.length && c.key === tabsKey()){
-        try{
-          ingest(c.rows); dataSig = c.sig; fromCache = true;
-          updateDataStatus('Cached ' + new Date(c.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + ' · refreshing…', true);
-        }catch(e){ console.warn('cache ignored', e); }
-      }
-    }
     showLoading();
-    if(fromCache) document.getElementById('dataStatusText').textContent = 'Cached data shown · refreshing from Google Sheet…';
     const msgEl = document.getElementById('loadMsg');
     try{
-      // tabs to load: defaults (A, B, C, D) + anything saved with the "Sheet tabs" button (saved entry wins for the same label)
-      const tabs = currentTabs();
+      // tabs to load: defaults (A, B, C, D, F) + anything saved with the "Sheet tabs" button (saved entry wins for the same label)
+      const tabs = getTabs();
       const details = []; lastDetails = details;
       const all = [], loaded = [], problems = [], counts = {}, seen = new Map(), seenRows = new Map();
       let workbookNames = null;
@@ -1345,9 +1300,10 @@ tbody tr:nth-child(even){background:#FAFCFF;}
 
 
       // Phase 3: any tab still missing -> download the whole workbook once, read the real tab names, and pick the tab from it.
-      if(problems.length && await ensureXLSX().then(()=>true, ()=>false)){
+      if(problems.length){
         if(msgEl) msgEl.textContent = 'Reading the full workbook to find tabs ' + problems.join(', ') + '…';
         try{
+          await ensureXLSX();
           const res = await fetchWithTimeout('https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export?format=xlsx', 180000);
           if(!res.ok) throw new Error('HTTP ' + res.status);
           const wb = XLSX.read(await res.arrayBuffer(), {type:'array'});
@@ -1375,10 +1331,10 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       if(!all.length) throw (firstErr || new Error('No data rows were found.'));
       problems.forEach(n=> console.warn('Tab not loaded:', n));
 
-      const sig = dataSigOf(all);
-      if(sig !== dataSig){ ingest(all, RAW.length > 0); }
-      dataSig = sig;
-      if(!problems.length) cachePut({key:tabsKey(), sig, ts:Date.now(), rows:all});
+      const sig = datasetSig(all);
+      if(!(bgRefresh && sig === cachedSig)) ingest(all, bgRefresh);     // unchanged data -> no re-render, filters stay as they are
+      cachedSig = sig;
+      cachePut('rows:' + tabsKey(), {rows: all, sig, ts: Date.now()});
       const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       setBusy(false);
       let label = 'Updated ' + t + ' · ' + loaded.map(n=> n + ' ' + counts[n].toLocaleString()).join(' · ') + ' rows';
@@ -1389,32 +1345,17 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       document.getElementById('dataDot').className = problems.length ? 'dot off' : 'dot';
       document.getElementById('refreshBtn').classList.remove('loading');
       document.getElementById('refreshBtn').disabled = false;
-      if(problems.length && !window.__tabAlertShown){ window.__tabAlertShown = true; alert('Tab load report:\n\n' + details.join('\n\n') + '\n\nFix: click "Sheet tabs" and enter e.g.  A, B, C, D=123  (123 = number after #gid= in the address bar when you open that tab).'); }
+      if(problems.length && !window.__tabAlertShown){ window.__tabAlertShown = true; alert('Tab load report:\n\n' + details.join('\n\n') + '\n\nFix: click "Sheet tabs" and enter e.g.  A, B, C, D=123, F  (123 = number after #gid= in the address bar when you open that tab).'); }
     }catch(err){
-      if(fromCache || RAW.length){
-        console.warn('Refresh failed:', err);
-        document.getElementById('refreshBtn').classList.remove('loading');
-        document.getElementById('refreshBtn').disabled = false;
-        updateDataStatus('Offline · showing last saved data', true);
-        document.getElementById('dataDot').className = 'dot off';
-      } else {
-        showLoadError((err && err.message) ? err.message : 'Unknown error');
-      }
+      showLoadError((err && err.message) ? err.message : 'Unknown error');
     }finally{
-      isLoading = false;
+      isLoading = false; bgRefresh = false;
     }
   }
 
   function ingest(rows, keepFilters){
-    RAW = rows; dataVersion++; dataSig = null;
-    if(keepFilters){
-      FILTER_DIMS.forEach(d=>{
-        const have = new Set(); for(let i=0;i<rows.length;i++) have.add(rows[i][d.key]);
-        ACTIVE[d.key] = new Set(Array.from(ACTIVE[d.key]).filter(v=> have.has(v)));
-      });
-    } else {
-      FILTER_DIMS.forEach(d=> ACTIVE[d.key] = new Set());
-    }
+    RAW = rows; dataVersion++;
+    if(!keepFilters) FILTER_DIMS.forEach(d=> ACTIVE[d.key] = new Set());
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
     buildFilters();
@@ -2108,45 +2049,54 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     el.textContent = '⚠️ ' + msg + ' — other sections of the dashboard are unaffected and still work.';
     el.style.display = 'block';
   }
-  const TAB_RENDER = {
-    trend:    {label:'Month-wise trend', run: d=> renderTrend(d)},
-    overview: {label:'All-SKU overview', run: d=> renderOverview(d, document.getElementById('skuSearch') ? document.getElementById('skuSearch').value : '')},
-    geo:      {label:'Wing & Territory performance', run: d=>{ renderGeo(d, document.getElementById('geoSearch') ? document.getElementById('geoSearch').value : ''); renderGeoMom(d); }},
-    mom:      {label:'Month-on-month comparison', run: d=> renderMom(d)},
-  };
-  let dirtyTabs = new Set(), renderToken = 0;
-  function activeTabKey(){ const t = document.querySelector('.tab.active'); return t && TAB_RENDER[t.dataset.tab] ? t.dataset.tab : 'trend'; }
-  function renderTabIfDirty(key){
-    if(!dirtyTabs.has(key)) return;
-    dirtyTabs.delete(key);
-    safeRun(TAB_RENDER[key].label, ()=> TAB_RENDER[key].run(getFilteredData()));
+  // Only the visible tab is drawn; the other tabs are drawn when opened. Calls in the same tick are merged into one render.
+  const paneDirty = {};
+  let _renderQueued = false;
+  function currentPane(){ const t = document.querySelector('.tab.active'); return t ? t.dataset.tab : 'trend'; }
+  function renderPane(name, data){
+    if(name==='trend') safeRun('Month-wise trend', ()=> renderTrend(data));
+    else if(name==='overview') safeRun('All-SKU overview', ()=> renderOverview(data, document.getElementById('skuSearch') ? document.getElementById('skuSearch').value : ''));
+    else if(name==='geo'){
+      safeRun('Wing & Territory performance', ()=> renderGeo(data, document.getElementById('geoSearch') ? document.getElementById('geoSearch').value : ''));
+      safeRun('Wing & Territory MoM comparison', ()=> renderGeoMom(data));
+    }
+    else if(name==='mom') safeRun('Month-on-month comparison', ()=> renderMom(data));
+    paneDirty[name] = false;
   }
-  // Only what the person is looking at is drawn immediately; the other tabs are drawn in the background,
-  // one per timer tick (and the trend charts only when their tab is opened, so they never draw into a hidden pane).
-  function renderAll(){
+  // Tab badges (counts) are cheap to compute in one pass, so they stay correct even for tabs not drawn yet.
+  function updateBadges(data){
+    const per = new Set(), skus = new Set(), geo = new Set();
+    for(let i=0;i<data.length;i++){
+      const r = data[i];
+      per.add(r.year+'|'+r.month);
+      if(r.sku) skus.add(r.sku);
+      geo.add(geoLevel==='wing' ? r.wing : geoLevel==='region' ? r.wing+'|'+r.region : r.wing+'|'+r.region+'|'+r.territory);
+    }
+    document.getElementById('tabTrendN').textContent = per.size;
+    document.getElementById('tabOverN').textContent = skus.size;
+    document.getElementById('tabGeoN').textContent = geo.size;
+  }
+  function renderNow(){
     const data = getFilteredData();
-    const tok = ++renderToken;
     safeRun('Filter count', refreshFilterCount);
     safeRun('Filter dropdowns', refreshAllDropdowns);
     safeRun('KPI summary', ()=> renderKpis(data));
-    safeRun('Trend badge', ()=>{ document.getElementById('tabTrendN').textContent = periodsAvailable(data).length; });
-    safeRun('Row count footer', ()=>{ document.getElementById('rowCountFoot').textContent = RAW.length.toLocaleString(); });
-    dirtyTabs = new Set(Object.keys(TAB_RENDER));
-    const act = activeTabKey();
-    renderTabIfDirty(act);
-    const rest = Object.keys(TAB_RENDER).filter(k=> k !== act && k !== 'trend');
-    (function next(){
-      if(tok !== renderToken || !rest.length) return;
-      const k = rest.shift();
-      setTimeout(()=>{ if(tok !== renderToken) return; renderTabIfDirty(k); next(); }, 30);
-    })();
+    safeRun('Tab counts', ()=> updateBadges(data));
+    ['trend','overview','geo','mom'].forEach(n=> paneDirty[n] = true);
+    renderPane(currentPane(), data);
+    safeRun('Row count footer', ()=> { document.getElementById('rowCountFoot').textContent = RAW.length.toLocaleString(); });
+  }
+  function renderAll(){
+    if(_renderQueued) return;
+    _renderQueued = true;
+    Promise.resolve().then(()=>{ _renderQueued = false; renderNow(); });
   }
 
   /* ================= EVENTS ================= */
   document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
   document.getElementById('dataStatus').addEventListener('click', ()=>{ if(lastDetails.length) alert('Tab load report:\n\n' + lastDetails.join('\n\n')); });
   document.getElementById('tabsBtn').addEventListener('click', ()=>{
-    const v = prompt('Extra tab / gid override (comma diye alada kore). A, B, C ar D default-e load hoy.\nJemon:  D=123   (123 = oi tab-e click korle URL-er #gid= er por-er number)\nba notun tab:  E, F=456', getSavedTabs());
+    const v = prompt('Extra tab / gid override (comma diye alada kore). A, B, C, D ar F default-e load hoy.\nJemon:  D=123   (123 = oi tab-e click korle URL-er #gid= er por-er number)\nba notun tab:  E, G=456', getSavedTabs());
     if(v === null) return;
     saveTabs(v);
     loadFromSheet();
@@ -2163,7 +2113,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
       tab.classList.add('active');
       document.querySelectorAll('.tabpane').forEach(p=>p.style.display='none');
       document.getElementById('pane-'+tab.dataset.tab).style.display='block';
-      renderTabIfDirty(tab.dataset.tab);
+      if(paneDirty[tab.dataset.tab]) renderPane(tab.dataset.tab, getFilteredData());
       if(tab.dataset.tab==='trend'){ try{ if(salesChart) salesChart.resize(); if(ndChart) ndChart.resize(); }catch(e){} }
     });
   });
@@ -2263,7 +2213,7 @@ tbody tr:nth-child(even){background:#FAFCFF;}
           notes.push(f.name + ': ' + rows.length.toLocaleString() + ' rows');
           rows.forEach(r=> all.push(r));
         } else {
-          await ensureXLSX().catch(()=>{ throw new Error('Excel reader library did not load (check internet). Save the file as CSV and try again.'); });
+          try{ await ensureXLSX(); }catch(e){ throw new Error('Excel reader library did not load (check internet). Save the file as CSV and try again.'); }
           const wb = XLSX.read(await f.arrayBuffer(), {type:'array'});
           wb.SheetNames.forEach(sn=>{
             const rows = parseTabCsv(XLSX.utils.sheet_to_csv(wb.Sheets[sn], {blankrows:false}), sn);
@@ -2292,8 +2242,16 @@ tbody tr:nth-child(even){background:#FAFCFF;}
     if(ev==='drop') loadFiles(e.dataTransfer.files);
   }));
 
-  // auto-load from Google Sheet on open
-  loadFromSheet();
+  // open instantly with the last saved data (if any), then refresh from the Google Sheet in the background
+  (async function boot(){
+    const c = await cacheGet('rows:' + tabsKey());
+    if(c && c.rows && c.rows.length){
+      cachedSig = c.sig; bgRefresh = true;
+      ingest(c.rows);
+      updateDataStatus('Saved data · refreshing…', true);
+    }
+    loadFromSheet();
+  })();
 
 })();
 </script>
